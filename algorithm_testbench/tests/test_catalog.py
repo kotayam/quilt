@@ -146,7 +146,9 @@ class CatalogTests(unittest.TestCase):
             text = index.read_text()
             self.assertIn("not measured production data", text)
             self.assertIn("External stores remain external after merging", text)
-            self.assertEqual(len(list(output.iterdir())), 16)
+            profiled_count = sum(any("execution_profiles" in data["attributes"]
+                                     for data in document["nodes"]) for document in originals.values())
+            self.assertEqual(len(list(output.iterdir())), 1 + 5 * len(originals) + 5 * profiled_count)
             for name, document in originals.items():
                 self.assertEqual(Scenario.load(output / f"{name}.json").to_dict(), document)
                 for suffix in (".svg", ".png", "_payloads.svg", "_payloads.png"):

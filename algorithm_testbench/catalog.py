@@ -5,9 +5,11 @@ from pathlib import Path
 
 from .display import DEFAULT_RESOURCES, resource_lines
 from .model import Scenario
+from .profiles import execution_profile_view
 
 
-WORKFLOWS = ("ml_training", "gpu_image_inference", "compose_post")
+WORKFLOWS = ("ml_training", "gpu_image_inference", "compose_post",
+             "video_feed_small", "video_feed_large", "video_feed_cache_miss")
 EXAMPLES = Path(__file__).parent / "examples" / "workflows"
 
 
@@ -18,6 +20,40 @@ def load_workflows():
 
 def _cell(value):
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def _profile_comparison(scenario):
+    lines = ["", "CPU/GPU implementation alternatives (illustrative, **not optimizer outputs**):", "",
+             "| Function | Implementation | Requires GPU | Exclusive service time [ms] | Estimated resources | Reference device |",
+             "| --- | --- | --- | --- | --- | --- |"]
+    for node, data in scenario.graph.nodes(data=True):
+        for implementation, profile in data["attributes"].get("execution_profiles", {}).items():
+            resources = "<br>".join(resource_lines(profile["resources"], DEFAULT_RESOURCES, "MiB"))
+            lines.append(f"| `{node}` | {implementation} | {profile['requires_gpu']} | "
+                         f"{profile['estimated_service_time_ms']} | {_cell(resources)} | {_cell(profile['reference_device'])} |")
+    lines.extend(["", "These times exclude nested function calls and queueing; GPU times include",
+                  "illustrative launch/transfer overhead. They are not end-to-end latency estimates.", ""])
+    return lines
+
+
+def _execution_notes(scenario):
+    lines = ["", "Caller-local execution plan (edge layout alone does not imply this order):", "",
+             "| Caller | Ordered actions |", "| --- | --- |"]
+    for node, data in scenario.graph.nodes(data=True):
+        actions = []
+        for step in data["attributes"].get("execution_plan", []):
+            if step["kind"] == "parallel":
+                actions.append(f"parallel [{', '.join(step['callees'])}], join {step['join']}")
+            else:
+                actions.append(f"{step['kind']} {step['callee']}" + (" (detached)" if step.get("join") == "none" else ""))
+        if actions:
+            lines.append(f"| `{node}` | {_cell('; then '.join(actions))} |")
+    lines.extend(["", "Shared helper inputs (external volumes are averaged per helper invocation):", "",
+                  "| Helper | Caller | Items/call | Response bytes/call |", "| --- | --- | --- | --- |"])
+    for node, data in scenario.graph.nodes(data=True):
+        for context in data["attributes"].get("call_contexts", []):
+            lines.append(f"| `{node}` | `{context['caller']}` | {context['items']} | {context['response_bytes']} |")
+    return lines
 
 
 def render_catalog(output, *, workflow=None, orientation="vertical"):
@@ -50,23 +86,41 @@ def render_catalog(output, *, workflow=None, orientation="vertical"):
         scenario.save(output / f"{name}.json")
         visualize(scenario, output / name, orientation=orientation)
         visualize(scenario, output / f"{name}_payloads", orientation=orientation, edge_attribute="request_bytes")
+        has_profiles = any("execution_profiles" in data["attributes"] for _, data in scenario.graph.nodes(data=True))
         lines.extend([f"## {name.replace('_', ' ').title()}", "", scenario.metadata["description"], "",
                       f"Structure: `{provenance['structure_status']}`. N = {scenario.metadata['workflow_invocations']}.", "",
                       f"[JSON]({name}.json) · [Call graph SVG]({name}.svg) · [PNG]({name}.png) · "
                       f"[Request-payload SVG]({name}_payloads.svg) · [PNG]({name}_payloads.png)", "",
-                      f"![{name} — illustrative resource estimates]({name}.png)", "", "Sources:", ""])
+                      f"![{name} — illustrative resource estimates]({name}.png)", ""])
+        if has_profiles:
+            gpu_view = execution_profile_view(scenario, "gpu")
+            gpu_view.save(output / f"{name}_gpu.json")
+            visualize(gpu_view, output / f"{name}_gpu", orientation=orientation)
+            visualize(scenario, output / f"{name}_responses", orientation=orientation, edge_attribute="response_bytes")
+            lines.extend(["The ordinary graph is the CPU baseline. The GPU view selects both available",
+                          "GPU alternatives for illustration; it is **not a placement or merging decision**.", "",
+                          f"[GPU-view JSON]({name}_gpu.json) · [GPU-view SVG]({name}_gpu.svg) · [PNG]({name}_gpu.png) · "
+                          f"[Response-payload SVG]({name}_responses.svg) · [PNG]({name}_responses.png)", "",
+                          "Inspect response payloads too: feature tensors are returned by shared helpers,",
+                          "so request-only views understate the communication opportunity.", ""])
+        lines.extend(["Sources:", ""])
         for source in provenance["sources"]:
             if "url" in source:
                 lines.append(f"- [{source['label']}]({source['url']})")
             else:
                 lines.append(f"- {source['label']}: repository path `{source['path']}`")
-        lines.extend(["", "Stage profiles:", "", "| Function | Role | External services | Estimated resources |",
-                      "| --- | --- | --- | --- |"])
+        lines.extend(["", "Stage profiles" + (" (CPU baseline)" if has_profiles else "") + ":", "",
+                      "| Function | Role | External services | Estimated resources |" + (" Exclusive service time [ms] |" if has_profiles else ""),
+                      "| --- | --- | --- | --- |" + (" --- |" if has_profiles else "")])
         for node, data in scenario.graph.nodes(data=True):
             attributes = data["attributes"]
             resources = "<br>".join(resource_lines(data["resources"], DEFAULT_RESOURCES, "MiB"))
             services = ", ".join(attributes.get("external_services", [])) or "None"
-            lines.append(f"| `{node}` | {_cell(attributes['role'])} | {_cell(services)} | {_cell(resources)} |")
+            lines.append(f"| `{node}` | {_cell(attributes['role'])} | {_cell(services)} | {_cell(resources)} |"
+                         + (f" {attributes['estimated_service_time_ms']:.3f} |" if has_profiles else ""))
+        if has_profiles:
+            lines.extend(_profile_comparison(scenario))
+            lines.extend(_execution_notes(scenario))
         lines.extend(["", "Call payload budgets (bytes/call):", "",
                       "| Caller | Callee | Type | Requests/window | Request bytes | Response bytes |",
                       "| --- | --- | --- | --- | --- | --- |"])

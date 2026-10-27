@@ -1,0 +1,971 @@
+{
+  "schema_version": 1,
+  "name": "Video feed (small, CPU baseline) \u2014 Illustrative resource estimates, not measured production data",
+  "entry": "feed_handler",
+  "workflow_invocations": 100,
+  "units": {
+    "cpu": "illustrative active core equivalents",
+    "memory": "MiB"
+  },
+  "description": "A 21-function direct-call adaptation combining web serving, shared helpers, parallel retrieval and optional GPU inference; not TikTok's actual architecture.",
+  "provenance": {
+    "catalog_id": "video_feed_small",
+    "resource_status": "illustrative_estimates",
+    "structure_status": "illustrative_direct_call_adaptation",
+    "sources": [
+      {
+        "label": "Google recommendation-system stages",
+        "url": "https://developers.google.com/machine-learning/recommendation/overview/types"
+      },
+      {
+        "label": "Deep Neural Networks for YouTube Recommendations",
+        "url": "https://research.google/pubs/deep-neural-networks-for-youtube-recommendations/"
+      },
+      {
+        "label": "CloudFront video delivery",
+        "url": "https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/on-demand-streaming-video.html"
+      }
+    ]
+  },
+  "workload": {
+    "case": "small",
+    "raw_candidates": 100,
+    "branch_candidates": {
+      "similar_candidates": 40,
+      "trending_candidates": 30,
+      "followed_candidates": 30
+    },
+    "duplicate_fraction": 0.2,
+    "unique_candidates": 80,
+    "eligibility_rejection_fraction": 0.2,
+    "ranking_candidates": 64,
+    "returned_videos": 10,
+    "cache_hit_rate": 0.9,
+    "id_bytes": 8,
+    "candidate_record_bytes": 12,
+    "context_bytes": 512,
+    "feature_width": 128,
+    "feature_element_bytes": 4,
+    "ranking_feature_bytes": 32768,
+    "query_embedding_width": 256,
+    "query_embedding_bytes": 1024,
+    "ranking_scores_bytes": 256,
+    "card_metadata_bytes": 512,
+    "playback_url_bytes_per_item": 256,
+    "render_envelope_bytes": 512,
+    "rendered_response_bytes": 8192,
+    "model_state": "warm",
+    "default_execution_profile": "cpu",
+    "reference_cpu": "Illustrative CPU worker with up to 4 cores; no measured performance",
+    "reference_gpu": "Illustrative compatible CUDA GPU with 16 GiB memory; no measured performance"
+  },
+  "assumptions": [
+    "This is an illustrative direct-call architecture inspired by published recommendation stages, not a reproduction of TikTok or YouTube. All resource, timing, and payload budgets are estimates.",
+    "Each edge is called once per successful workflow execution in N=100 executions. Shared feature_lookup and video_metadata each run twice per workflow; their external volumes and service times are means per function invocation over two call contexts, and host memory is a chosen peak envelope across contexts.",
+    "execution_plan records caller-local order and join-all points. Each async retrieval/lookup branch is awaited; record_event is detached. Sibling nodes do not imply parallel execution.",
+    "Context aggregates a subset/summary of profile and history. Similarity retrieval uses a 256-float query embedding; each ranking item has 128 float32 features. IDs use 8 bytes; retrieved candidate records add a 4-byte score.",
+    "20% of raw candidates are removed as duplicates; eligibility rejects 20% of unique candidates. Re-ranking selects ten IDs. Metadata uses a 64-byte eligibility projection or a 512-byte card projection.",
+    "The external feature and metadata cache-hit rate is an expected item-level rate, not a new function branch. A cache lookup sends 8 ID bytes per item, hits return the value, misses return an 8-byte placeholder and trigger an 8-byte backend ID request with the value returned once. Helper resource profiles average both call contexts equally.",
+    "Cache misses mainly increase external service time; data is still returned exactly once. Exclusive service-time estimates include own computation/external I/O and exclude nested function calls, queueing, and end-to-end scheduling. Profile time is not an evaluator objective.",
+    "CPU/GPU alternatives exist only for encode_query and rank_candidates. Baseline resources equal the CPU profile. GPU alternatives assume warm models and include illustrative GPU launch and host/device-transfer overhead. No placement or GPU capacity is enforced.",
+    "Node network volumes describe external services only. RPC request/response payloads are on edges and are not double-counted in node fields. Storage, caches, indexes, event sinks and the CDN remain external after merging.",
+    "The feed returns an 8192-byte JSON/page-shell budget with metadata and URLs. The client downloads video segments from the CDN separately; video bodies do not pass through these functions.",
+    "Local disk I/O is zero for this warm in-memory serving example. Model downloads, retries, failures, client-to-entry traffic and most protocol framing are excluded. No bandwidth rate or end-to-end latency is inferred."
+  ],
+  "merging_questions": [
+    "Should batched feature hydration merge with ranking when its large tensor is a response payload?",
+    "Can the large ranking batch justify GPU overhead while the small request remains on CPU?",
+    "Should cheap web wrappers share a GPU-requiring group, or retain independent scaling?",
+    "Should feature_lookup or video_metadata be duplicated across groups, given different caller contexts and retained external I/O?",
+    "How do cache misses change waiting time without changing call counts or automatically increasing GPU compute demand?"
+  ],
+  "nodes": [
+    {
+      "id": "feed_handler",
+      "resources": {
+        "cpu": 0.08,
+        "memory": 96,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Coordinate the feed request, retaining completed stage results",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.5,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "authenticate"
+          },
+          {
+            "kind": "sync",
+            "callee": "load_context"
+          },
+          {
+            "kind": "sync",
+            "callee": "recommend"
+          },
+          {
+            "kind": "sync",
+            "callee": "hydrate_feed"
+          },
+          {
+            "kind": "sync",
+            "callee": "render_response"
+          },
+          {
+            "kind": "async",
+            "callee": "record_event",
+            "join": "none"
+          }
+        ]
+      }
+    },
+    {
+      "id": "authenticate",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Validate a warm local signing key; no remote authentication call",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.3,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "load_context",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Launch profile/history lookups and await both results",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.2,
+        "execution_plan": [
+          {
+            "kind": "parallel",
+            "callees": [
+              "profile_lookup",
+              "history_lookup"
+            ],
+            "join": "all"
+          }
+        ]
+      }
+    },
+    {
+      "id": "profile_lookup",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 256,
+        "network_external_tx_bytes_per_invocation": 64
+      },
+      "attributes": {
+        "role": "Read a compact user profile from the external profile store",
+        "requires_gpu": false,
+        "external_services": [
+          "profile_store"
+        ],
+        "estimated_service_time_ms": 1.5,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "history_lookup",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 48,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 2048,
+        "network_external_tx_bytes_per_invocation": 64
+      },
+      "attributes": {
+        "role": "Read recent viewing IDs from the external session cache",
+        "requires_gpu": false,
+        "external_services": [
+          "session_cache"
+        ],
+        "estimated_service_time_ms": 1,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "recommend",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 128,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Run candidate retrieval, ranking and re-ranking in that order",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.4,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "candidate_pool"
+          },
+          {
+            "kind": "sync",
+            "callee": "rank_candidates"
+          },
+          {
+            "kind": "sync",
+            "callee": "rerank"
+          }
+        ]
+      }
+    },
+    {
+      "id": "candidate_pool",
+      "resources": {
+        "cpu": 0.15,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Join three retrieval branches, deduplicate, then call eligibility filtering",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.3,
+        "execution_plan": [
+          {
+            "kind": "parallel",
+            "callees": [
+              "similar_candidates",
+              "trending_candidates",
+              "followed_candidates"
+            ],
+            "join": "all"
+          },
+          {
+            "kind": "sync",
+            "callee": "candidate_filter"
+          }
+        ]
+      }
+    },
+    {
+      "id": "similar_candidates",
+      "resources": {
+        "cpu": 0.08,
+        "memory": 96,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 480,
+        "network_external_tx_bytes_per_invocation": 1088
+      },
+      "attributes": {
+        "role": "Read query features, encode query, and access an external vector index",
+        "requires_gpu": false,
+        "external_services": [
+          "vector_index"
+        ],
+        "estimated_service_time_ms": 2,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "feature_lookup"
+          },
+          {
+            "kind": "sync",
+            "callee": "encode_query"
+          }
+        ]
+      }
+    },
+    {
+      "id": "trending_candidates",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 48,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 360,
+        "network_external_tx_bytes_per_invocation": 64
+      },
+      "attributes": {
+        "role": "Retrieve popular IDs/scores from the external trends cache",
+        "requires_gpu": false,
+        "external_services": [
+          "trends_cache"
+        ],
+        "estimated_service_time_ms": 1,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "followed_candidates",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 360,
+        "network_external_tx_bytes_per_invocation": 256
+      },
+      "attributes": {
+        "role": "Read social IDs, then retrieve their recent videos from an external index",
+        "requires_gpu": false,
+        "external_services": [
+          "creator_video_index"
+        ],
+        "estimated_service_time_ms": 1.5,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "social_lookup"
+          }
+        ]
+      }
+    },
+    {
+      "id": "candidate_filter",
+      "resources": {
+        "cpu": 0.1,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Fetch eligibility metadata and remove 20% of unique candidates",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.16,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "video_metadata"
+          }
+        ]
+      }
+    },
+    {
+      "id": "feature_lookup",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 16666.0,
+        "network_external_tx_bytes_per_invocation": 286.0
+      },
+      "attributes": {
+        "role": "Shared batched feature helper; resources are averaged over two call contexts",
+        "requires_gpu": false,
+        "external_services": [
+          "feature_cache",
+          "feature_store"
+        ],
+        "estimated_service_time_ms": 2.065,
+        "execution_plan": [],
+        "call_contexts": [
+          {
+            "caller": "similar_candidates",
+            "items": 1,
+            "response_bytes": 512
+          },
+          {
+            "caller": "rank_candidates",
+            "items": 64,
+            "response_bytes": 32768
+          }
+        ]
+      }
+    },
+    {
+      "id": "encode_query",
+      "resources": {
+        "cpu": 1,
+        "memory": 256,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Warm neural query encoder with selectable CPU/GPU implementation",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 3,
+        "execution_plan": [],
+        "execution_profiles": {
+          "cpu": {
+            "resources": {
+              "cpu": 1,
+              "memory": 256,
+              "storage_read_bytes_per_invocation": 0,
+              "storage_write_bytes_per_invocation": 0,
+              "network_external_rx_bytes_per_invocation": 0,
+              "network_external_tx_bytes_per_invocation": 0
+            },
+            "requires_gpu": false,
+            "estimated_service_time_ms": 3,
+            "reference_device": "Illustrative CPU worker with up to 4 cores; no measured performance",
+            "assumptions": [
+              "Exclusive service time excludes nested function calls and queueing.",
+              "Warm model; GPU time includes illustrative launch and host/device-transfer overhead.",
+              "Synthetic tradeoff hypothesis, not a measured speedup or end-to-end prediction."
+            ]
+          },
+          "gpu": {
+            "resources": {
+              "cpu": 0.15,
+              "memory": 256,
+              "storage_read_bytes_per_invocation": 0,
+              "storage_write_bytes_per_invocation": 0,
+              "network_external_rx_bytes_per_invocation": 0,
+              "network_external_tx_bytes_per_invocation": 0,
+              "gpu_peak_memory_bytes": 805306368
+            },
+            "requires_gpu": true,
+            "estimated_service_time_ms": 7,
+            "reference_device": "Illustrative compatible CUDA GPU with 16 GiB memory; no measured performance",
+            "assumptions": [
+              "Exclusive service time excludes nested function calls and queueing.",
+              "Warm model; GPU time includes illustrative launch and host/device-transfer overhead.",
+              "Synthetic tradeoff hypothesis, not a measured speedup or end-to-end prediction."
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "social_lookup",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 48,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 256,
+        "network_external_tx_bytes_per_invocation": 64
+      },
+      "attributes": {
+        "role": "Read followed creator IDs from the external social store",
+        "requires_gpu": false,
+        "external_services": [
+          "social_store"
+        ],
+        "estimated_service_time_ms": 1.5,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "rank_candidates",
+      "resources": {
+        "cpu": 1,
+        "memory": 512,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Fetch feature tensors and score the eligible candidate batch",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 8,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "feature_lookup"
+          }
+        ],
+        "execution_profiles": {
+          "cpu": {
+            "resources": {
+              "cpu": 1,
+              "memory": 512,
+              "storage_read_bytes_per_invocation": 0,
+              "storage_write_bytes_per_invocation": 0,
+              "network_external_rx_bytes_per_invocation": 0,
+              "network_external_tx_bytes_per_invocation": 0
+            },
+            "requires_gpu": false,
+            "estimated_service_time_ms": 8,
+            "reference_device": "Illustrative CPU worker with up to 4 cores; no measured performance",
+            "assumptions": [
+              "Exclusive service time excludes nested function calls and queueing.",
+              "Warm model; GPU time includes illustrative launch and host/device-transfer overhead.",
+              "Synthetic tradeoff hypothesis, not a measured speedup or end-to-end prediction."
+            ]
+          },
+          "gpu": {
+            "resources": {
+              "cpu": 0.25,
+              "memory": 512,
+              "storage_read_bytes_per_invocation": 0,
+              "storage_write_bytes_per_invocation": 0,
+              "network_external_rx_bytes_per_invocation": 0,
+              "network_external_tx_bytes_per_invocation": 0,
+              "gpu_peak_memory_bytes": 2147483648
+            },
+            "requires_gpu": true,
+            "estimated_service_time_ms": 10,
+            "reference_device": "Illustrative compatible CUDA GPU with 16 GiB memory; no measured performance",
+            "assumptions": [
+              "Exclusive service time excludes nested function calls and queueing.",
+              "Warm model; GPU time includes illustrative launch and host/device-transfer overhead.",
+              "Synthetic tradeoff hypothesis, not a measured speedup or end-to-end prediction."
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "rerank",
+      "resources": {
+        "cpu": 0.1,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Apply CPU-based diversity rules and select ten items",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.192,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "video_metadata",
+      "resources": {
+        "cpu": 0.04,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 5156.0,
+        "network_external_tx_bytes_per_invocation": 396.0
+      },
+      "attributes": {
+        "role": "Shared metadata helper with different filter/hydration projections",
+        "requires_gpu": false,
+        "external_services": [
+          "metadata_cache",
+          "video_catalog"
+        ],
+        "estimated_service_time_ms": 1.8449999999999998,
+        "execution_plan": [],
+        "call_contexts": [
+          {
+            "caller": "candidate_filter",
+            "items": 80,
+            "response_bytes": 5120
+          },
+          {
+            "caller": "hydrate_feed",
+            "items": 10,
+            "response_bytes": 5120
+          }
+        ]
+      }
+    },
+    {
+      "id": "hydrate_feed",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Fetch ten video cards then request their playback URLs",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.3,
+        "execution_plan": [
+          {
+            "kind": "sync",
+            "callee": "video_metadata"
+          },
+          {
+            "kind": "sync",
+            "callee": "playback_urls"
+          }
+        ]
+      }
+    },
+    {
+      "id": "playback_urls",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Generate locally signed CDN URLs for ten items",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 0.5,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "render_response",
+      "resources": {
+        "cpu": 0.1,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Render feed JSON or a page shell containing ten cards and playback URLs",
+        "requires_gpu": false,
+        "external_services": [],
+        "estimated_service_time_ms": 1,
+        "execution_plan": []
+      }
+    },
+    {
+      "id": "record_event",
+      "resources": {
+        "cpu": 0.02,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 64,
+        "network_external_tx_bytes_per_invocation": 1024
+      },
+      "attributes": {
+        "role": "Publish a detached recommendation event to an external event sink",
+        "requires_gpu": false,
+        "external_services": [
+          "event_sink"
+        ],
+        "estimated_service_time_ms": 1,
+        "execution_plan": []
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "feed_handler",
+      "target": "authenticate",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 64,
+        "arguments_from": [
+          "request.credentials"
+        ]
+      }
+    },
+    {
+      "source": "feed_handler",
+      "target": "load_context",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 512,
+        "arguments_from": [
+          "authenticate.user_id"
+        ]
+      }
+    },
+    {
+      "source": "feed_handler",
+      "target": "recommend",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 80,
+        "arguments_from": [
+          "load_context.result"
+        ]
+      }
+    },
+    {
+      "source": "feed_handler",
+      "target": "hydrate_feed",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 80,
+        "response_bytes": 7680,
+        "arguments_from": [
+          "recommend.result"
+        ]
+      }
+    },
+    {
+      "source": "feed_handler",
+      "target": "render_response",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 7680,
+        "response_bytes": 8192,
+        "arguments_from": [
+          "hydrate_feed.result"
+        ]
+      }
+    },
+    {
+      "source": "feed_handler",
+      "target": "record_event",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 1024,
+        "response_bytes": 0,
+        "arguments_from": [
+          "recommend.result",
+          "request.context"
+        ]
+      }
+    },
+    {
+      "source": "load_context",
+      "target": "profile_lookup",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 256,
+        "arguments_from": [
+          "user_id"
+        ]
+      }
+    },
+    {
+      "source": "load_context",
+      "target": "history_lookup",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 2048,
+        "arguments_from": [
+          "user_id"
+        ]
+      }
+    },
+    {
+      "source": "recommend",
+      "target": "candidate_pool",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 512,
+        "arguments_from": [
+          "context"
+        ]
+      }
+    },
+    {
+      "source": "recommend",
+      "target": "rank_candidates",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 1024,
+        "response_bytes": 768,
+        "arguments_from": [
+          "candidate_pool.result",
+          "context"
+        ]
+      }
+    },
+    {
+      "source": "recommend",
+      "target": "rerank",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 768,
+        "response_bytes": 80,
+        "arguments_from": [
+          "rank_candidates.result"
+        ]
+      }
+    },
+    {
+      "source": "candidate_pool",
+      "target": "similar_candidates",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 480,
+        "arguments_from": [
+          "context"
+        ]
+      }
+    },
+    {
+      "source": "candidate_pool",
+      "target": "trending_candidates",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 360,
+        "arguments_from": [
+          "context"
+        ]
+      }
+    },
+    {
+      "source": "candidate_pool",
+      "target": "followed_candidates",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 360,
+        "arguments_from": [
+          "context"
+        ]
+      }
+    },
+    {
+      "source": "candidate_pool",
+      "target": "candidate_filter",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 640,
+        "response_bytes": 512,
+        "arguments_from": [
+          "deduplicated_results_of_all_three_branches"
+        ]
+      }
+    },
+    {
+      "source": "similar_candidates",
+      "target": "feature_lookup",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 72,
+        "response_bytes": 512,
+        "arguments_from": [
+          "user_id"
+        ]
+      }
+    },
+    {
+      "source": "similar_candidates",
+      "target": "encode_query",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 1024,
+        "arguments_from": [
+          "feature_lookup.result"
+        ]
+      }
+    },
+    {
+      "source": "followed_candidates",
+      "target": "social_lookup",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 256,
+        "arguments_from": [
+          "user_id"
+        ]
+      }
+    },
+    {
+      "source": "candidate_filter",
+      "target": "video_metadata",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 704,
+        "response_bytes": 5120,
+        "arguments_from": [
+          "candidate_ids",
+          "eligibility_projection"
+        ]
+      }
+    },
+    {
+      "source": "rank_candidates",
+      "target": "feature_lookup",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 576,
+        "response_bytes": 32768,
+        "arguments_from": [
+          "candidate_ids"
+        ]
+      }
+    },
+    {
+      "source": "hydrate_feed",
+      "target": "video_metadata",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 144,
+        "response_bytes": 5120,
+        "arguments_from": [
+          "selected_ids",
+          "card_projection"
+        ]
+      }
+    },
+    {
+      "source": "hydrate_feed",
+      "target": "playback_urls",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 80,
+        "response_bytes": 2560,
+        "arguments_from": [
+          "selected_ids"
+        ]
+      }
+    }
+  ]
+}

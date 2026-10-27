@@ -4,7 +4,10 @@
 These examples are intended to help form merging hypotheses. They are not new
 algorithms, runnable applications, or evidence of production performance.
 
-Render the three saved graphs, their request-payload views, and a catalog with
+The [personalized video-feed family](VIDEO_FEED.md) adds three more complex cases
+with shared helpers, parallel retrieval and CPU/GPU implementation alternatives.
+
+Render all saved graphs, their request-payload views, and a catalog with
 per-stage profiles, sources, and assumptions, from the repository root:
 
 ```bash
@@ -14,8 +17,8 @@ python -m algorithm_testbench.catalog
 Open `algorithm_testbench/outputs/workflow_catalog/index.md`. That output directory
 is self-contained: it includes JSON snapshots and both SVG/PNG views of each graph.
 The renderer works offline and does not fetch sources or change these examples.
-Use `--output DIRECTORY`, `--workflow ml_training` (or `gpu_image_inference` or
-`compose_post`), and `--orientation horizontal` to render a subset/different layout.
+Use `--output DIRECTORY`, `--workflow ml_training` (or another catalog name),
+and `--orientation horizontal` to render a subset/different layout.
 The existing single-graph visualizer also works on every JSON here.
 
 ## CPU-based parallel ML training

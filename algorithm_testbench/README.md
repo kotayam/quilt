@@ -6,7 +6,9 @@ Original `merge_solver/` source is only imported by optional Quilt adapters.
 
 For source-based workflow examples with illustrative extended resource profiles,
 see the [curated workflow guide](examples/workflows/README.md): parallel CPU ML
-training, warm GPU image inference, and database-backed compose-post. Render all
+training, warm GPU image inference, database-backed compose-post, and a complex
+21-function personalized video-feed family with CPU/GPU alternatives. See the
+[video-feed guide](examples/workflows/VIDEO_FEED.md) for its three workload cases. Render all
 graphs and a self-contained catalog with `python -m algorithm_testbench.catalog`.
 
 ## Install and try it
