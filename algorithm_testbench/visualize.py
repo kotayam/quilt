@@ -190,7 +190,10 @@ def visualize(scenario, output, *, resources=None, node_attributes=None,
         f"{scenario.metadata.get('name', 'Call graph')}  |  N = {scenario.metadata['workflow_invocations']} workflow invocations",
         width=max(35, int(width * 8)))
     header_height = 0.5 + 0.27 * len(graph_title.splitlines())
-    height = rows * (panel_height + 0.5) + (rows - 1) * 0.6 + header_height + 0.9
+    # Narrow chain graphs stack the three legend entries; reserve enough space
+    # to keep their top entry below the edge-description text.
+    footer_height = 1.25 if width < 6 else 0.9
+    height = rows * (panel_height + 0.5) + (rows - 1) * 0.6 + header_height + footer_height
     fig = plt.figure(figsize=(width, height))
     colors = ["#eff6ff", "#fff7ed", "#f5f3ff", "#fdf2f8", "#ecfeff"]
     try:
@@ -213,7 +216,7 @@ def visualize(scenario, output, *, resources=None, node_attributes=None,
                    fontsize=9, bbox_to_anchor=(0.5, 0.03 / height))
         edge_description = {"invocations": "calls per profiling window", "request_bytes": "request payload per call",
                             "response_bytes": "response payload per call"}.get(edge_attribute, edge_attribute)
-        fig.text(0.5, 0.65 / height, textwrap.fill(
+        fig.text(0.5, (footer_height - 0.25) / height, textwrap.fill(
             f"Edge labels: {edge_description}" + (" | Shared functions repeat across group panels" if groups else ""),
             width=max(40, int(width * 12))),
                  ha="center", fontsize=9, color="#475569")

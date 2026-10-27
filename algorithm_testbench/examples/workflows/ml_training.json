@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "name": "Parallel CPU ML training — Illustrative resource estimates, not measured production data",
+  "entry": "generate_dataset",
+  "workflow_invocations": 100,
+  "units": {
+    "cpu": "illustrative active core equivalents",
+    "memory": "MiB"
+  },
+  "provenance": {
+    "catalog_id": "ml_training",
+    "resource_status": "illustrative_estimates",
+    "structure_status": "direct_call_adaptation",
+    "sources": [
+      {
+        "label": "SeBS-Flow, Section V: Machine Learning",
+        "url": "https://arxiv.org/html/2410.03480v1#S5"
+      }
+    ]
+  },
+  "description": "CPU-based dataset generation followed by concurrent SVM and Random Forest training, adapted from SeBS-Flow.",
+  "assumptions": [
+    "Every edge is invoked once per successful workflow execution; N=100 is a synthetic profiling window.",
+    "CPU values are illustrative average active core equivalents; memory is illustrative peak host MiB per invocation, including runtime overhead. Neither was measured.",
+    "Local storage and external network values are bytes per function invocation. Edge request/response values are body-size budgets per call; they are excluded from node external-network totals.",
+    "External object stores, caches, and databases are not mergeable function nodes. Merging does not automatically remove their traffic.",
+    "Connection setup, retries, transport overhead, client-to-entry traffic, and execution timing are not modeled. No bandwidth rate or latency prediction is implied.",
+    "Zero means no modeled demand for this selected workload, not an observed production measurement.",
+    "The source uses orchestration/data dependencies. Here generate_dataset uploads the dataset, directly invokes both trainers asynchronously, and waits for completion.",
+    "Both trainers read the same object; their function calls carry references, not feature matrices. There is no local scratch file.",
+    "Float64 features, int64 labels, model artifact sizes, CPU/memory demand, and reference-envelope sizes are illustrative choices, not values reported by SeBS-Flow."
+  ],
+  "workload": {
+    "samples": 500,
+    "features": 1024,
+    "feature_element_bytes": 8,
+    "label_element_bytes": 8,
+    "dataset_bytes": 4100000,
+    "svm_artifact_bytes": 262144,
+    "random_forest_artifact_bytes": 1048576
+  },
+  "merging_questions": [
+    "Is combining the generator with one or both trainers worthwhile when dataset transfer remains external?",
+    "Would concurrent CPU/memory demand outweigh eliminating two small reference-bearing calls?",
+    "Could an application rewrite pass the dataset directly, and how would that differ from merging alone?"
+  ],
+  "nodes": [
+    {
+      "id": "generate_dataset",
+      "resources": {
+        "cpu": 0.5,
+        "memory": 128,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 4100000
+      },
+      "attributes": {
+        "role": "Generate 500 x 1024 features and labels; upload one shared dataset",
+        "requires_gpu": false,
+        "external_services": [
+          "object_store"
+        ]
+      }
+    },
+    {
+      "id": "train_svm",
+      "resources": {
+        "cpu": 1,
+        "memory": 256,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 4100000,
+        "network_external_tx_bytes_per_invocation": 262144
+      },
+      "attributes": {
+        "role": "Read the dataset and train a CPU SVM; upload model",
+        "requires_gpu": false,
+        "external_services": [
+          "object_store"
+        ]
+      }
+    },
+    {
+      "id": "train_random_forest",
+      "resources": {
+        "cpu": 2,
+        "memory": 384,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 4100000,
+        "network_external_tx_bytes_per_invocation": 1048576
+      },
+      "attributes": {
+        "role": "Read the same dataset and train a CPU Random Forest; upload model",
+        "requires_gpu": false,
+        "external_services": [
+          "object_store"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "generate_dataset",
+      "target": "train_svm",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 256,
+        "payload_kind": "dataset_reference_and_parameters"
+      }
+    },
+    {
+      "source": "generate_dataset",
+      "target": "train_random_forest",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 512,
+        "response_bytes": 256,
+        "payload_kind": "dataset_reference_and_parameters"
+      }
+    }
+  ]
+}
