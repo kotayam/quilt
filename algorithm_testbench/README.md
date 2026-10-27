@@ -82,7 +82,7 @@ Enable synthetic extended data without changing the original graph:
 
 ```bash
 python -m algorithm_testbench.generate --shape diamond --seed 42 --resource-profile extended --output algorithm_testbench/outputs/extended.json
-python -m algorithm_testbench.visualize algorithm_testbench/outputs/extended.json --resources memory,gpu_peak_memory_bytes --node-attributes requires_gpu --edge-attribute request_bytes --output algorithm_testbench/outputs/extended
+python -m algorithm_testbench.visualize algorithm_testbench/outputs/extended.json --output algorithm_testbench/outputs/extended
 ```
 
 `examples/graphs/diamond_extended.json` is a saved output of this command. The
@@ -250,12 +250,39 @@ cannot satisfy resource limits.
 
 ## Visualization options
 
+All supported measurements present in the graph are shown by default, including
+storage operations/volumes, external network RX/TX, GPU requirement, and GPU memory.
+Labels use short names and group storage counts with their volumes. CPU is shown
+without units. Byte quantities automatically scale to B, KiB, MiB, GiB, TiB (and
+larger binary units as needed), with at most two decimals and no scientific notation.
+For example, `gpu_peak_memory_bytes: 1073741824` renders as `GPU memory: 1 GiB`.
+Missing measurements are omitted; explicit zeros remain visible.
+
+Storage operations are labeled `ops/inv`, and node storage/network volumes use
+`KiB/inv` or the appropriate byte scale. These are per-invocation volumes, not
+bandwidth rates. Edge invocation counts use `calls/window`; request/response
+payloads use bytes per call, such as `12 KiB/call`.
+
+The original `memory` field defaults to source units of MiB for generated graphs.
+A graph's optional top-level `units.memory` declaration supplies another source
+unit. When visualizing a selected benchmark result, its experiment's memory unit
+takes precedence over the graph declaration. `--memory-unit` overrides both.
+Recognized byte units (including decimal MB/GB) are converted to binary display
+units; custom units such as `pages` are displayed as declared. New `_bytes` fields
+always contain bytes and are unaffected by this override. Graph JSON, generator
+output, and resource accounting remain unchanged.
+
+Select fewer measurements or change edge labels when needed:
+
 ```bash
 python -m algorithm_testbench.visualize algorithm_testbench/examples/graphs/diamond_extended.json --resources memory,gpu_peak_memory_bytes --node-attributes requires_gpu --edge-attribute request_bytes --orientation horizontal --output algorithm_testbench/outputs/traffic.svg
 ```
 
 Layouts use deterministic topological layers; synchronous and asynchronous edges
-have distinct colors/styles. The root is highlighted. `--hide-labels` keeps IDs
+have distinct colors/styles. Node spacing and figure dimensions adapt to measured
+label sizes. The root is highlighted. `--resources` and `--node-attributes` replace
+their respective default field selections; pass an empty string to omit a category.
+Arbitrary custom keys can still be selected explicitly. `--hide-labels` keeps IDs
 and hides resources/edge labels. Large dense DAGs can be cluttered: select fewer
 fields or export SVG for zooming. `--result`, `--algorithm`, and `--seed` select
 a validated assignment for one panel per merge group, repeating shared functions

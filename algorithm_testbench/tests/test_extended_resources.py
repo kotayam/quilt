@@ -137,9 +137,9 @@ class ExtendedResourceTests(unittest.TestCase):
             visualize(scenario, path, resources=["memory", "gpu_peak_memory_bytes"],
                       node_attributes=["requires_gpu"], edge_attribute="request_bytes")
             svg = path.read_text()
-            self.assertIn("gpu_peak_memory_bytes", svg)
-            self.assertIn("requires_gpu: true", svg)
-            self.assertIn("requires_gpu: false", svg)
+            self.assertIn("GPU memory: 256 MiB", svg)
+            self.assertIn("GPU required: yes", svg)
+            self.assertIn("GPU required: no", svg)
 
 
 @unittest.skipUnless(importlib.util.find_spec("gurobipy"), "optional gurobipy is not installed")
