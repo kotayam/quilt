@@ -4,8 +4,7 @@ from .model import number
 
 
 DEFAULT_RESOURCES = (
-    "cpu", "memory", "storage_read_ops_per_invocation", "storage_read_bytes_per_invocation",
-    "storage_write_ops_per_invocation", "storage_write_bytes_per_invocation",
+    "cpu", "memory", "storage_read_bytes_per_invocation", "storage_write_bytes_per_invocation",
     "network_external_rx_bytes_per_invocation", "network_external_tx_bytes_per_invocation",
     "gpu_peak_memory_bytes",
 )
@@ -13,6 +12,11 @@ BYTE_UNITS = ("B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB")
 MEMORY_SCALES = {unit: 1024 ** index for index, unit in enumerate(BYTE_UNITS)}
 MEMORY_SCALES.update({"bytes": 1, "kB": 1000, "KB": 1000, "MB": 1000 ** 2,
                       "GB": 1000 ** 3, "TB": 1000 ** 4})
+PAIRED_RESOURCES = (
+    ("Storage R/W", "storage_read_bytes_per_invocation", "storage_write_bytes_per_invocation"),
+    ("Network RX/TX", "network_external_rx_bytes_per_invocation", "network_external_tx_bytes_per_invocation"),
+    ("Storage ops R/W", "storage_read_ops_per_invocation", "storage_write_ops_per_invocation"),
+)
 
 
 def value_text(value):
@@ -25,7 +29,7 @@ def value_text(value):
     return str(value)
 
 
-def format_bytes(value):
+def _scaled_bytes(value):
     number(value, "byte measurement")
     index = 0
     while value >= 1024 and index < len(BYTE_UNITS) - 1:
@@ -35,7 +39,33 @@ def format_bytes(value):
     if round(value, 2) >= 1024 and index < len(BYTE_UNITS) - 1:
         value /= 1024
         index += 1
-    return f"{value_text(value)} {BYTE_UNITS[index]}"
+    return value, index
+
+
+def format_byte_parts(value):
+    value, index = _scaled_bytes(value)
+    return value_text(value), BYTE_UNITS[index]
+
+
+def format_bytes(value):
+    return " ".join(format_byte_parts(value))
+
+
+def _paired_line(label, values, *, operations=False):
+    if operations:
+        unit, scale = "ops", 1
+    else:
+        _, index = _scaled_bytes(max(value for value in values if value is not None))
+        unit, scale = BYTE_UNITS[index], 1024 ** index
+    parts = []
+    for value in values:
+        if value is None:
+            parts.append("—")
+        else:
+            scaled = value / scale
+            # A large shared unit must not turn a nonzero member into an apparent zero.
+            parts.append("<0.01" if 0 < scaled < 0.005 else value_text(scaled))
+    return f"{label} [{unit}]: {' / '.join(parts)}"
 
 
 def memory_unit_for(scenario, override=None, result_units=None):
@@ -49,7 +79,7 @@ def memory_unit_for(scenario, override=None, result_units=None):
 
 
 def resource_lines(data, resources, memory_unit):
-    """Group storage operations and volumes, respecting explicit field selection."""
+    """Compact paired volumes with shared units; operation counts are opt-in."""
     selected = set(resources)
     handled = set()
     for key in resources:
@@ -59,29 +89,20 @@ def resource_lines(data, resources, memory_unit):
         if key == "cpu":
             yield f"CPU: {value_text(value)}"
         elif key == "memory":
-            amount = (format_bytes(value * MEMORY_SCALES[memory_unit]) if memory_unit in MEMORY_SCALES
-                      else f"{value_text(value)} {memory_unit}")
-            yield f"Memory: {amount}"
-        elif key.startswith("storage_") and key in DEFAULT_RESOURCES:
-            direction = key.split("_")[1]
-            operations = f"storage_{direction}_ops_per_invocation"
-            volume = f"storage_{direction}_bytes_per_invocation"
-            parts = []
-            if operations in selected and operations in data:
-                parts.append(f"{value_text(data[operations])} ops/inv")
-            if volume in selected and volume in data:
-                parts.append(f"{format_bytes(data[volume])}/inv")
-            handled.update((operations, volume))
-            yield f"Storage {direction}: {', '.join(parts)}"
-        elif key.startswith("network_external_") and key in DEFAULT_RESOURCES:
-            direction = "RX" if "_rx_" in key else "TX"
-            yield f"Network {direction}: {format_bytes(value)}/inv"
+            amount, unit = (format_byte_parts(value * MEMORY_SCALES[memory_unit]) if memory_unit in MEMORY_SCALES
+                            else (value_text(value), memory_unit))
+            yield f"Memory [{unit}]: {amount}"
+        elif any(key in (left, right) for _, left, right in PAIRED_RESOURCES):
+            label, left, right = next(pair for pair in PAIRED_RESOURCES if key in pair[1:])
+            values = [data.get(member) if member in selected else None for member in (left, right)]
+            handled.update((left, right))
+            yield _paired_line(label, values, operations=left.endswith("_ops_per_invocation"))
         elif key == "gpu_peak_memory_bytes":
-            yield f"GPU memory: {format_bytes(value)}"
-        elif key.endswith("_bytes"):
-            yield f"{key}: {format_bytes(value)}"
-        elif key.endswith("_bytes_per_invocation"):
-            yield f"{key}: {format_bytes(value)}/inv"
+            amount, unit = format_byte_parts(value)
+            yield f"GPU memory [{unit}]: {amount}"
+        elif key.endswith(("_bytes", "_bytes_per_invocation")):
+            amount, unit = format_byte_parts(value)
+            yield f"{key} [{unit}]: {amount}"
         else:
             yield f"{key}: {value_text(value)}"
 

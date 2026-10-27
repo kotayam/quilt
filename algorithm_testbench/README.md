@@ -250,18 +250,31 @@ cannot satisfy resource limits.
 
 ## Visualization options
 
-All supported measurements present in the graph are shown by default, including
-storage operations/volumes, external network RX/TX, GPU requirement, and GPU memory.
-Labels use short names and group storage counts with their volumes. CPU is shown
-without units. Byte quantities automatically scale to B, KiB, MiB, GiB, TiB (and
-larger binary units as needed), with at most two decimals and no scientific notation.
-For example, `gpu_peak_memory_bytes: 1073741824` renders as `GPU memory: 1 GiB`.
-Missing measurements are omitted; explicit zeros remain visible.
+The default node label shows CPU, memory, paired storage/network volumes, and GPU
+memory when present:
 
-Storage operations are labeled `ops/inv`, and node storage/network volumes use
-`KiB/inv` or the appropriate byte scale. These are per-invocation volumes, not
-bandwidth rates. Edge invocation counts use `calls/window`; request/response
-payloads use bytes per call, such as `12 KiB/call`.
+```text
+f1
+CPU: 3
+Memory [MiB]: 16
+Storage R/W [KiB]: 88 / 156
+Network RX/TX [KiB]: 473.75 / 244.03
+GPU memory [MiB]: 256
+```
+
+Storage operation counts and the GPU-required flag are hidden by default; their
+JSON fields and generation remain unchanged. CPU has no units. Other units appear
+in brackets beside labels. Byte quantities automatically scale to B, KiB, MiB,
+GiB, TiB (and larger binary units as needed), with at most two decimal places and
+no scientific notation. Both values in a pair use the same unit, chosen from the
+larger selected value. A missing or unselected partner is shown as a dash; a pair
+with both measurements missing is omitted. Explicit zeros remain visible. Positive
+values too small for two decimal places in a shared unit appear as `<0.01`.
+
+Storage and external network volumes remain **per function invocation**, with the
+repeated `/inv` suffix omitted from node labels for readability. They are not
+bandwidth rates. Edge labels are unchanged: invocation counts use `calls/window`,
+and request/response payloads use bytes per call, such as `12 KiB/call`.
 
 The original `memory` field defaults to source units of MiB for generated graphs.
 A graph's optional top-level `units.memory` declaration supplies another source
@@ -275,14 +288,18 @@ output, and resource accounting remain unchanged.
 Select fewer measurements or change edge labels when needed:
 
 ```bash
-python -m algorithm_testbench.visualize algorithm_testbench/examples/graphs/diamond_extended.json --resources memory,gpu_peak_memory_bytes --node-attributes requires_gpu --edge-attribute request_bytes --orientation horizontal --output algorithm_testbench/outputs/traffic.svg
+python -m algorithm_testbench.visualize algorithm_testbench/examples/graphs/diamond_extended.json --edge-attribute request_bytes --orientation horizontal --output algorithm_testbench/outputs/traffic.svg
 ```
 
 Layouts use deterministic topological layers; synchronous and asynchronous edges
 have distinct colors/styles. Node spacing and figure dimensions adapt to measured
 label sizes. The root is highlighted. `--resources` and `--node-attributes` replace
 their respective default field selections; pass an empty string to omit a category.
-Arbitrary custom keys can still be selected explicitly. `--hide-labels` keeps IDs
+Arbitrary custom keys can still be selected explicitly. Explicit
+`--node-attributes requires_gpu` restores the GPU-required flag if
+needed. Operation counts can be requested with
+`--resources storage_read_ops_per_invocation,storage_write_ops_per_invocation`,
+which renders a separate `Storage ops R/W [ops]` line. `--hide-labels` keeps IDs
 and hides resources/edge labels. Large dense DAGs can be cluttered: select fewer
 fields or export SVG for zooming. `--result`, `--algorithm`, and `--seed` select
 a validated assignment for one panel per merge group, repeating shared functions

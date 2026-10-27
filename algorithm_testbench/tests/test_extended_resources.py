@@ -137,7 +137,7 @@ class ExtendedResourceTests(unittest.TestCase):
             visualize(scenario, path, resources=["memory", "gpu_peak_memory_bytes"],
                       node_attributes=["requires_gpu"], edge_attribute="request_bytes")
             svg = path.read_text()
-            self.assertIn("GPU memory: 256 MiB", svg)
+            self.assertIn("GPU memory [MiB]: 256", svg)
             self.assertIn("GPU required: yes", svg)
             self.assertIn("GPU required: no", svg)
 

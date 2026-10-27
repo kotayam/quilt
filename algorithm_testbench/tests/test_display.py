@@ -29,16 +29,16 @@ class DisplayTests(unittest.TestCase):
 
     def test_default_labels_group_storage_and_keep_cpu_unitless(self):
         scenario = generate("diamond", seed=42, resource_profile="extended")
-        label = _label("f1", scenario.graph.nodes["f1"], DEFAULT_RESOURCES, ["requires_gpu"], False)
+        label = _label("f1", scenario.graph.nodes["f1"], DEFAULT_RESOURCES, [], False)
         self.assertIn("CPU: 3\n", label)
         self.assertNotIn("profile units", label)
-        self.assertIn("Memory: 16 MiB", label)
-        self.assertIn("Storage read: 22 ops/inv, 88 KiB/inv", label)
-        self.assertIn("Storage write: 39 ops/inv, 156 KiB/inv", label)
-        self.assertIn("Network RX: 473.75 KiB/inv", label)
-        self.assertIn("Network TX: 244.03 KiB/inv", label)
-        self.assertIn("GPU memory: 256 MiB", label)
-        self.assertIn("GPU required: yes", label)
+        self.assertIn("Memory [MiB]: 16", label)
+        self.assertIn("Storage R/W [KiB]: 88 / 156", label)
+        self.assertIn("Network RX/TX [KiB]: 473.75 / 244.03", label)
+        self.assertIn("GPU memory [MiB]: 256", label)
+        self.assertNotIn("GPU required", label)
+        self.assertNotIn("ops", label)
+        self.assertNotIn("/inv", label)
         self.assertNotIn("e+", label)
 
     def test_field_selection_missing_zero_and_hidden_labels(self):
@@ -47,15 +47,30 @@ class DisplayTests(unittest.TestCase):
         data["resources"]["storage_read_ops_per_invocation"] = 0
         data["resources"]["network_external_rx_bytes_per_invocation"] = 0
         label = _label("f0", data, DEFAULT_RESOURCES, ["requires_gpu"], False)
-        self.assertIn("Storage read: 0 ops/inv", label)
-        self.assertIn("Network RX: 0 B/inv", label)
-        self.assertNotIn("Storage write", label)
+        self.assertNotIn("Storage", label)  # Operation counts alone are hidden by default.
+        self.assertIn("Network RX/TX [B]: 0 / —", label)
         self.assertNotIn("GPU", label)
-        self.assertEqual(_label("f0", data, ["memory"], [], False), f"f0\nMemory: {data['resources']['memory']} MiB")
+        self.assertEqual(_label("f0", data, ["memory"], [], False), f"f0\nMemory [MiB]: {data['resources']['memory']}")
         self.assertEqual(_label("f0", data, DEFAULT_RESOURCES, ["requires_gpu"], True), "f0")
         data["resources"]["storage_read_bytes_per_invocation"] = 1024
         label = _label("f0", data, ["storage_read_bytes_per_invocation"], [], False)
-        self.assertEqual(label, "f0\nStorage read: 1 KiB/inv")
+        self.assertEqual(label, "f0\nStorage R/W [KiB]: 1 / —")
+
+    def test_paired_units_missing_values_and_manual_operations(self):
+        data = {"resources": {"storage_read_bytes_per_invocation": 1024,
+                              "storage_write_bytes_per_invocation": 1024 ** 2,
+                              "network_external_rx_bytes_per_invocation": 0,
+                              "network_external_tx_bytes_per_invocation": 0,
+                              "storage_read_ops_per_invocation": 22,
+                              "storage_write_ops_per_invocation": 39}}
+        label = _label("n", data, DEFAULT_RESOURCES, [], False)
+        self.assertIn("Storage R/W [MiB]: <0.01 / 1", label)
+        self.assertIn("Network RX/TX [B]: 0 / 0", label)
+        label = _label("n", data, ["storage_write_bytes_per_invocation"], [], False)
+        self.assertEqual(label, "n\nStorage R/W [MiB]: — / 1")
+        label = _label("n", data, ["storage_read_ops_per_invocation", "storage_write_ops_per_invocation"], [], False)
+        self.assertEqual(label, "n\nStorage ops R/W [ops]: 22 / 39")
+        self.assertEqual(_label("n", {"resources": {}}, DEFAULT_RESOURCES, [], False), "n")
 
     def test_source_memory_units_and_precedence(self):
         scenario = generate("chain", 1)
@@ -66,10 +81,10 @@ class DisplayTests(unittest.TestCase):
         self.assertEqual(memory_unit_for(scenario, "GiB", {"memory": "B"}), "GiB")
         data = {"resources": {"cpu": 2, "memory": 1024, "gpu_peak_memory_bytes": 1024 ** 3}}
         label = _label("node", data, DEFAULT_RESOURCES, [], False, memory_unit="KiB")
-        self.assertIn("Memory: 1 MiB", label)
-        self.assertIn("GPU memory: 1 GiB", label)
+        self.assertIn("Memory [MiB]: 1", label)
+        self.assertIn("GPU memory [GiB]: 1", label)
         label = _label("node", data, ["memory"], [], False, memory_unit="pages")
-        self.assertIn("Memory: 1024 pages", label)
+        self.assertIn("Memory [pages]: 1024", label)
         with self.assertRaises(ValueError):
             memory_unit_for(scenario, "")
 
@@ -100,14 +115,17 @@ class DisplayTests(unittest.TestCase):
                 path = Path(directory) / f"{orientation}.svg"
                 visualize(scenario, path, orientation=orientation)
                 svg = path.read_text()
-                for expected in ("Storage read:", "Storage write:", "Network RX:", "Network TX:",
-                                 "GPU memory: 1 GiB", "CPU: 3", "100 calls/window", "workflow invocations"):
+                for expected in ("Storage R/W [KiB]", "Network RX/TX [KiB]",
+                                 "GPU memory [GiB]: 1", "CPU: 3", "100 calls/window", "workflow invocations"):
                     self.assertIn(expected, svg)
                 self.assertNotIn("profile units", svg)
+                self.assertNotIn("GPU required", svg)
+                self.assertNotIn("ops/inv", svg)
+                self.assertNotIn("/inv", svg)
             path = Path(directory) / "groups.svg"
             visualize(scenario, path, groups={"f0": ["f0", "f1"], "f2": ["f2", "f3"]})
             self.assertIn("Group rooted at f0", path.read_text())
-            self.assertIn("Storage read:", path.read_text())
+            self.assertIn("Storage R/W [KiB]", path.read_text())
         self.assertEqual(original, scenario.to_dict())
 
     def test_cli_units_result_units_and_field_controls(self):
@@ -126,15 +144,15 @@ class DisplayTests(unittest.TestCase):
             svg = directory / "image.svg"
             command = [sys.executable, "-m", "algorithm_testbench.visualize", str(graph), "--output", str(svg)]
             subprocess.run(command, check=True, capture_output=True, timeout=15)
-            self.assertIn("Memory: 1 KiB", svg.read_text())
+            self.assertIn("Memory [KiB]: 1", svg.read_text())
             subprocess.run(command + ["--result", str(result)], check=True, capture_output=True, timeout=15)
-            self.assertIn("Memory: 1 MiB", svg.read_text())
+            self.assertIn("Memory [MiB]: 1", svg.read_text())
             subprocess.run(command + ["--result", str(result), "--memory-unit", "MiB"],
                            check=True, capture_output=True, timeout=15)
-            self.assertIn("Memory: 1 GiB", svg.read_text())
+            self.assertIn("Memory [GiB]: 1", svg.read_text())
             subprocess.run(command + ["--resources", "cpu", "--node-attributes", ""],
                            check=True, capture_output=True, timeout=15)
-            self.assertNotIn("Memory:", svg.read_text())
+            self.assertNotIn("Memory [", svg.read_text())
             subprocess.run(command + ["--hide-labels"], check=True, capture_output=True, timeout=15)
             self.assertNotIn("CPU:", svg.read_text())
 

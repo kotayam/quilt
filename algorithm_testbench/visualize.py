@@ -165,7 +165,7 @@ def visualize(scenario, output, *, resources=None, node_attributes=None,
     if orientation not in ("vertical", "horizontal"):
         raise ValueError("orientation must be vertical or horizontal")
     resources = list(DEFAULT_RESOURCES if resources is None else resources)
-    node_attributes = list(("requires_gpu",) if node_attributes is None else node_attributes)
+    node_attributes = list(() if node_attributes is None else node_attributes)
     memory_unit = memory_unit_for(scenario, memory_unit, result_units)
     labels = {node: _label(node, data, resources, node_attributes, hide_labels, memory_unit)
               for node, data in scenario.graph.nodes(data=True)}
@@ -233,8 +233,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("graph")
     parser.add_argument("--output", required=True, help=".svg, .png, or extensionless stem for both")
-    parser.add_argument("--resources", help="comma-separated resource keys; default: all supported measurements present")
-    parser.add_argument("--node-attributes", help="comma-separated attribute keys; default: requires_gpu when present")
+    parser.add_argument("--resources", help="comma-separated resource keys; default: CPU, memory, storage/network volumes, GPU memory")
+    parser.add_argument("--node-attributes", help="comma-separated attribute keys; default: none")
     parser.add_argument("--memory-unit", help="source unit of existing memory values; overrides declared units (default: MiB)")
     parser.add_argument("--edge-attribute", default="invocations")
     parser.add_argument("--hide-labels", action="store_true", help="show IDs but hide resource and edge labels")
