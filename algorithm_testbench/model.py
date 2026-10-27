@@ -52,7 +52,9 @@ class Scenario:
                 raise ValueError("node IDs must be unique nonempty strings")
             for key, value in mapping(node.get("resources"), f"{node_id}.resources").items():
                 number(value, f"{node_id}.resources.{key}")
-            mapping(node.setdefault("attributes", {}), f"{node_id}.attributes")
+            attributes = mapping(node.setdefault("attributes", {}), f"{node_id}.attributes")
+            if "requires_gpu" in attributes and type(attributes["requires_gpu"]) is not bool:
+                raise ValueError(f"{node_id}.attributes.requires_gpu must be a boolean")
             graph.add_node(node_id, **node)
         for edge in document.pop("edges"):
             edge = mapping(edge, "edge")
@@ -67,7 +69,10 @@ class Scenario:
                 raise ValueError("edge.invocations must be an integer")
             if edge.get("type") not in ("sync", "async"):
                 raise ValueError("edge.type must be sync or async")
-            mapping(edge.setdefault("attributes", {}), "edge.attributes")
+            attributes = mapping(edge.setdefault("attributes", {}), "edge.attributes")
+            for key in ("request_bytes", "response_bytes"):
+                if key in attributes:
+                    number(attributes[key], f"edge.attributes.{key}")
             graph.add_edge(source, target, **edge)
         entry = document.get("entry")
         if not isinstance(entry, str) or entry not in graph:

@@ -37,6 +37,8 @@ def layered_positions(graph, orientation="vertical"):
 
 
 def _value(value):
+    if isinstance(value, bool):
+        return str(value).lower()
     return f"{value:g}" if isinstance(value, (int, float)) else str(value)
 
 

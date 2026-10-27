@@ -41,7 +41,7 @@ the generator seed and parameters.
   "workflow_invocations": 100,
   "nodes": [
     {"id": "A", "resources": {"cpu": 1, "memory": 16}, "attributes": {}},
-    {"id": "B", "resources": {"cpu": 2, "memory": 32, "gpu_memory": 1024}, "attributes": {"device": "example GPU"}}
+    {"id": "B", "resources": {"cpu": 2, "memory": 32, "gpu_peak_memory_bytes": 1073741824}, "attributes": {"requires_gpu": true}}
   ],
   "edges": [
     {"source": "A", "target": "B", "invocations": 200, "type": "async", "attributes": {"request_bytes": 4096}}
@@ -75,6 +75,74 @@ The saved file is the experiment input; reuse it rather than regenerating graphs
 between algorithms. To test a generated file, copy an example experiment and set
 `graph` relative to that experiment's location. Vary resource ranges by editing
 the saved node dictionaries or constructing a `Scenario` in Python.
+
+## Optional storage, network, and GPU profiles
+
+Enable synthetic extended data without changing the original graph:
+
+```bash
+python -m algorithm_testbench.generate --shape diamond --seed 42 --resource-profile extended --output algorithm_testbench/outputs/extended.json
+python -m algorithm_testbench.visualize algorithm_testbench/outputs/extended.json --resources memory,gpu_peak_memory_bytes --node-attributes requires_gpu --edge-attribute request_bytes --output algorithm_testbench/outputs/extended
+```
+
+`examples/graphs/diamond_extended.json` is a saved output of this command. The
+default `--resource-profile basic` preserves the previous generator output.
+Extended generation uses a separate seeded random stream, leaving topology,
+invocation counts, edge types, CPU, and memory identical for the same parameters.
+
+Optional node fields in `resources`:
+
+| Field | Meaning |
+| --- | --- |
+| `storage_read_ops_per_invocation` | Average local disk read operations per invocation |
+| `storage_write_ops_per_invocation` | Average local disk write operations per invocation |
+| `storage_read_bytes_per_invocation` | Average bytes read from local disk per invocation |
+| `storage_write_bytes_per_invocation` | Average bytes written to local disk per invocation |
+| `network_external_rx_bytes_per_invocation` | Average external received bytes per invocation |
+| `network_external_tx_bytes_per_invocation` | Average external sent bytes per invocation |
+| `gpu_peak_memory_bytes` | Peak device-memory footprint of one invocation on its reference GPU |
+
+These measurements are finite, nonnegative numbers. Fractional per-invocation
+averages are allowed. New byte fields always use **bytes**, independent of the
+existing CPU/memory units. Missing fields mean unknown; zero means explicitly no
+demand. The loader does not fill missing measurements with zeros.
+
+Store `requires_gpu` as a **boolean in node `attributes`**, not `resources`, whose
+values must be numeric. Its absence means unspecified. A GPU-required function may
+omit its memory footprint when that measurement is unknown. A requirement flag
+describes hardware eligibility; optional peak memory adds useful capacity data.
+Neither implies a device count, exclusive allocation, or a compute utilization
+share. The generator omits GPU memory for nodes with `requires_gpu: false`.
+If device-specific profiles are needed, reference-device information can be
+recorded in arbitrary node attributes; it is not inferred or enforced.
+
+Node network data **excludes traffic represented by graph edges**. Optional edge
+`attributes.request_bytes` and `attributes.response_bytes` describe average
+payload bytes per call and must be finite, nonnegative numbers when present.
+Keeping these separate avoids double counting and lets a future model remove
+network traffic on merged call edges while retaining external traffic. Payload
+sizes do not automatically include protocol overhead. Remote database/object-store
+operations are not local disk operations; they need a separate service profile.
+
+The generator uses 0–128 reads/writes per invocation at 4 KiB per operation,
+0–1 MiB external rx/tx and per-call request/response sizes, a 25% GPU requirement
+probability, and GPU peaks chosen from 256, 512, or 1024 MiB. These are illustrative
+synthetic ranges, not hardware measurements. Edit the JSON for other workloads.
+
+**IOPS and bandwidth require a workload rate.** Per-invocation operations and bytes
+record work, rather than implicitly assuming a request rate. For example, 1 MiB
+per invocation at 100 function invocations/second implies 100 MiB/second average
+throughput. Peak demand additionally needs timing/concurrency information. Both
+operation counts and byte volumes matter for storage; neither alone captures all
+IOPS and throughput bottlenecks. GPU utilization is deferred because activity
+percentages do not directly describe an additive capacity requirement.
+
+These fields are **data only**. Quilt's algorithms and `quilt` evaluator continue
+using CPU, memory, invocation counts, and sync/async types; assignments, costs, and
+resource accounting do not change. New limits remain unsupported and are rejected
+explicitly. Validity under Quilt does not imply validity under GPU, disk, or
+network limits. GPU allocations shared across merged functions are not automatically
+deduplicated; a future model must define that behavior.
 
 ## Algorithms and custom implementations
 
@@ -152,7 +220,7 @@ Its known upstream-async/downstream-sync limitation is preserved for baseline
 comparability, with `examples/graphs/inherited_concurrency.json` illustrating it.
 A valid result means valid under this model, not guaranteed real peak usage.
 
-Storing `gpu_memory`, bandwidth, IOPS, or other fields does not enforce them.
+Storing `gpu_peak_memory_bytes`, bandwidth, IOPS, or other fields does not enforce them.
 Activating unsupported limits fails explicitly. Future models must specify units,
 aggregation, concurrency, local versus shared bottlenecks, and (for GPUs) device
 compatibility. Bandwidth demand also depends on traffic remaining after merging.
@@ -183,7 +251,7 @@ cannot satisfy resource limits.
 ## Visualization options
 
 ```bash
-python -m algorithm_testbench.visualize algorithm_testbench/examples/graphs/diamond.json --resources cpu,memory,gpu_memory --node-attributes role --edge-attribute request_bytes --orientation horizontal --output algorithm_testbench/outputs/traffic.svg
+python -m algorithm_testbench.visualize algorithm_testbench/examples/graphs/diamond_extended.json --resources memory,gpu_peak_memory_bytes --node-attributes requires_gpu --edge-attribute request_bytes --orientation horizontal --output algorithm_testbench/outputs/traffic.svg
 ```
 
 Layouts use deterministic topological layers; synchronous and asynchronous edges
