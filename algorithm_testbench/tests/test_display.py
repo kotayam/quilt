@@ -48,7 +48,7 @@ class DisplayTests(unittest.TestCase):
         data["resources"]["network_external_rx_bytes_per_invocation"] = 0
         label = _label("f0", data, DEFAULT_RESOURCES, ["requires_gpu"], False)
         self.assertNotIn("Storage", label)  # Operation counts alone are hidden by default.
-        self.assertIn("Network RX/TX [B]: 0 / —", label)
+        self.assertNotIn("Network", label)
         self.assertNotIn("GPU", label)
         self.assertEqual(_label("f0", data, ["memory"], [], False), f"f0\nMemory [MiB]: {data['resources']['memory']}")
         self.assertEqual(_label("f0", data, DEFAULT_RESOURCES, ["requires_gpu"], True), "f0")
@@ -65,12 +65,30 @@ class DisplayTests(unittest.TestCase):
                               "storage_write_ops_per_invocation": 39}}
         label = _label("n", data, DEFAULT_RESOURCES, [], False)
         self.assertIn("Storage R/W [MiB]: <0.01 / 1", label)
-        self.assertIn("Network RX/TX [B]: 0 / 0", label)
+        self.assertNotIn("Network", label)
         label = _label("n", data, ["storage_write_bytes_per_invocation"], [], False)
         self.assertEqual(label, "n\nStorage R/W [MiB]: — / 1")
         label = _label("n", data, ["storage_read_ops_per_invocation", "storage_write_ops_per_invocation"], [], False)
         self.assertEqual(label, "n\nStorage ops R/W [ops]: 22 / 39")
         self.assertEqual(_label("n", {"resources": {}}, DEFAULT_RESOURCES, [], False), "n")
+
+    def test_zero_resources_are_omitted_without_changing_data(self):
+        data = {"resources": {key: 0 for key in DEFAULT_RESOURCES}}
+        original = deepcopy(data)
+        self.assertEqual(_label("n", data, DEFAULT_RESOURCES, [], False), "n")
+        self.assertEqual(data, original)
+        data["resources"]["network_external_tx_bytes_per_invocation"] = 1024 ** 2
+        data["resources"]["storage_read_bytes_per_invocation"] = 1024
+        label = _label("n", data, DEFAULT_RESOURCES, [], False)
+        self.assertEqual(label, "n\nStorage R [KiB]: 1\nNetwork TX [MiB]: 1")
+        # Omitting the other member is distinct from knowing it is zero.
+        del data["resources"]["network_external_rx_bytes_per_invocation"]
+        self.assertIn("Network RX/TX [MiB]: — / 1", _label("n", data, DEFAULT_RESOURCES, [], False))
+        zero_ops = {"resources": {"storage_read_ops_per_invocation": 0,
+                                  "storage_write_ops_per_invocation": 5}}
+        selected = ["storage_read_ops_per_invocation", "storage_write_ops_per_invocation"]
+        self.assertEqual(_label("n", zero_ops, selected, [], False), "n\nStorage ops W [ops]: 5")
+        self.assertEqual(edge_text("invocations", 0), "0 calls/window")
 
     def test_source_memory_units_and_precedence(self):
         scenario = generate("chain", 1)

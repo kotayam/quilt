@@ -272,9 +272,14 @@ JSON fields and generation remain unchanged. CPU has no units. Other units appea
 in brackets beside labels. Byte quantities automatically scale to B, KiB, MiB,
 GiB, TiB (and larger binary units as needed), with at most two decimal places and
 no scientific notation. Both values in a pair use the same unit, chosen from the
-larger selected value. A missing or unselected partner is shown as a dash; a pair
-with both measurements missing is omitted. Explicit zeros remain visible. Positive
+larger selected value. Zero-valued node measurements are hidden. A pair with both
+values zero is omitted; a known-zero side is removed and the remaining direction
+is named explicitly, e.g. `Network TX [MiB]: 3.91` or `Storage R [KiB]: 88`.
+A missing or unselected partner is still shown as a dash when the other value is
+nonzero; a pair with no nonzero measurements is omitted. Positive
 values too small for two decimal places in a shared unit appear as `<0.01`.
+This affects labels only: stored zeros and algorithm inputs are preserved, and
+zero-valued edge labels retain their existing behavior.
 
 Storage and external network volumes remain **per function invocation**, with the
 repeated `/inv` suffix omitted from node labels for readability. They are not

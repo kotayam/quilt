@@ -52,6 +52,14 @@ def format_bytes(value):
 
 
 def _paired_line(label, values, *, operations=False):
+    if not any(value is not None and value != 0 for value in values):
+        return None
+    # Drop a known-zero side without disguising an unknown side as zero.
+    if 0 in values:
+        index = next(index for index, value in enumerate(values) if value not in (None, 0))
+        prefix, directions = label.rsplit(" ", 1)
+        label = f"{prefix} {directions.split('/')[index]}"
+        values = [values[index]]
     if operations:
         unit, scale = "ops", 1
     else:
@@ -86,6 +94,8 @@ def resource_lines(data, resources, memory_unit):
         if key in handled or key not in data:
             continue
         value = data[key]
+        if value == 0:
+            continue
         if key == "cpu":
             yield f"CPU: {value_text(value)}"
         elif key == "memory":
@@ -96,7 +106,9 @@ def resource_lines(data, resources, memory_unit):
             label, left, right = next(pair for pair in PAIRED_RESOURCES if key in pair[1:])
             values = [data.get(member) if member in selected else None for member in (left, right)]
             handled.update((left, right))
-            yield _paired_line(label, values, operations=left.endswith("_ops_per_invocation"))
+            line = _paired_line(label, values, operations=left.endswith("_ops_per_invocation"))
+            if line is not None:
+                yield line
         elif key == "gpu_peak_memory_bytes":
             amount, unit = format_byte_parts(value)
             yield f"GPU memory [{unit}]: {amount}"
