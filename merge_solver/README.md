@@ -33,6 +33,47 @@ pip3 install networkx gurobipy matplotlib
 
 # Quilt's decision algorithm
 
+## Experimental memory-model hook
+
+`memory_model_template.py` provides two unfinished extension points:
+`estimate_memory(graph, root, members)` for a concrete group's numeric memory
+estimate, and `build_memory_expression(model, graph, root, roots, y, z)` for the
+symbolic ILP formulation. Both raise `NotImplementedError` until you implement
+them. The template documents graph inputs, traversal stages, and concurrency
+assumptions that your implementation must specify.
+
+After implementing the symbolic function, call the solver directly from the
+repository root:
+
+```python
+from merge_solver.ilp import solve_subgraph_construction
+from merge_solver.memory_model_template import build_memory_expression
+from merge_solver.rdag import preprocess_graph
+
+# graph must use the solver's node m/c and edge weight/alpha/type fields.
+root, nodes, predecessors, reachable = preprocess_graph(graph)
+status, cost, groups = solve_subgraph_construction(
+    graph=graph, R_set={root}, M=150, C=100,
+    all_nodes=nodes, predecessors=predecessors,
+    full_reachable_from=reachable,
+    memory_expression_builder=build_memory_expression,
+)
+```
+
+The callback is called for each candidate root before optimization. It may add
+auxiliary variables/constraints and must return a linear expression in the same
+memory units as `M`; the solver adds the capacity constraint. Membership is still
+symbolic, so a traversal of an assumed final group cannot substitute for this
+formulation. Keep common traversal logic in pure helpers, and compare the
+symbolic formulation with your concrete estimator using fixed memberships.
+
+Omitting the callback preserves Quilt's original formula. CPU accounting, root
+selection, and their existing callers are unchanged. This hook is currently for
+direct ILP calls: experiment configuration and root-search callback propagation
+are not wired up. `print_solution_details()` and the testbench evaluator still
+report the original Quilt memory formula; they must be adapted before validating
+or reporting results from your custom model.
+
 ## Content
 The code is split into 10 files.
 
