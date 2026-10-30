@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "name": "Counterexample where quilt underestimates",
+  "entry": "a",
+  "workflow_invocations": 10,
+  "nodes": [
+    { "id": "a", "resources": { "cpu": 1, "memory": 10 }, "attributes": {} },
+    { "id": "b", "resources": { "cpu": 1, "memory": 20 }, "attributes": {} },
+    { "id": "c", "resources": { "cpu": 1, "memory": 40 }, "attributes": {} },
+    {
+      "id": "d",
+      "resources": { "cpu": 1, "memory": 5 },
+      "attributes": {}
+    }
+  ],
+  "edges": [
+    {
+      "source": "a",
+      "target": "b",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {}
+    },
+    {
+      "source": "b",
+      "target": "c",
+      "invocations": 200,
+      "type": "sync",
+      "attributes": {}
+    },
+    {
+      "source": "b",
+      "target": "d",
+      "invocations": 300,
+      "type": "async",
+      "attributes": {}
+    }
+  ]
+}
