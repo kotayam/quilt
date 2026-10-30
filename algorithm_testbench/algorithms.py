@@ -50,6 +50,7 @@ def quilt(scenario, limits, config, strategy):
         import gurobipy as gp
         import root_selector
         from rdag import preprocess_graph
+        from memory_inputs import prepare_memory_inputs
         from downstream_impact import select_downstream_candidate_roots
         from weighted_degree import select_weighted_degree_candidates
     except ImportError as error:
@@ -61,6 +62,8 @@ def quilt(scenario, limits, config, strategy):
     for u, v, data in graph.edges(data=True):
         data["weight"] = data["invocations"]
         data["alpha"] = scenario.alpha(u, v)
+
+    prepare_memory_inputs(graph, scenario.metadata["workflow_invocations"])
 
     statuses = []
     original_solve = root_selector.solve_subgraph_construction

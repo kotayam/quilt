@@ -9,16 +9,22 @@ eventually be used independently of the optimizer.
 def estimate_memory(graph, root, members):
     """Return numeric memory usage for a concrete group containing ``root``.
 
-    Inputs use the original solver graph format:
+    First call ``prepare_memory_inputs(graph, workflow_invocations)`` from
+    ``merge_solver.memory_inputs`` once on the original graph before root search.
+    Inputs use the prepared solver graph format:
       * node ``m``: memory in the caller's chosen units;
       * edge ``weight``: invocation count in the original profiling window;
       * edge ``alpha``: existing multiplicity, normalized to the original workflow;
       * edge ``type``: 'sync' or 'async'.
+      * node ``profile_invocations``: observed invocation count;
+      * ``graph.edges[u, v]["calls_per_caller"]``: weight divided by the caller's
+        profile_invocations, without rounding; None for an uninvoked caller.
 
     ``members`` is the selected group's collection of node IDs, not ILP variables.
-    Do not mutate the graph or overwrite alpha. Root invocation counts and timing
-    information are not guaranteed to be present; define what additional data or
-    execution assumptions your algorithm requires. Counts alone do not determine
+    Do not mutate the graph or overwrite alpha. Timing information is not
+    supplied; define what execution assumptions your algorithm requires.
+    Ratios average across all observed caller invocations, including shared
+    callers, and do not describe context-specific behavior. Counts do not determine
     concurrency, particularly for shared callees and conditional paths.
 
     Implementation outline:
@@ -41,6 +47,14 @@ def build_memory_expression(model, graph, root, roots, y, z):
       * ``roots`` contains all candidate roots in this ILP;
       * ``y[node, root]`` is the binary node-membership variable;
       * ``z[source, target, root]`` is binary internal-edge membership.
+
+    First call ``prepare_memory_inputs(graph, workflow_invocations)`` from
+    ``merge_solver.memory_inputs`` once before root search or a direct solve.
+    Read caller-relative ratios through
+    ``graph.edges[u, v]["calls_per_caller"]`` and counts through node
+    ``profile_invocations``. Ratios are unrounded averages across all observed
+    caller invocations (including shared callers), or None for uninvoked callers;
+    they do not establish peak concurrency or context-specific behavior.
 
     The caller adds ``expression <= M``. You may add auxiliary variables and
     constraints here, using names unique to this root. Variables have no solution

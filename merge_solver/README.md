@@ -48,9 +48,12 @@ repository root:
 ```python
 from merge_solver.ilp import solve_subgraph_construction
 from merge_solver.memory_model_template import build_memory_expression
+from merge_solver.memory_inputs import prepare_memory_inputs
 from merge_solver.rdag import preprocess_graph
 
 # graph must use the solver's node m/c and edge weight/alpha/type fields.
+prepare_memory_inputs(graph, workflow_invocations=10)
+# Custom estimators can read graph.edges[u, v]["calls_per_caller"].
 root, nodes, predecessors, reachable = preprocess_graph(graph)
 status, cost, groups = solve_subgraph_construction(
     graph=graph, R_set={root}, M=150, C=100,
@@ -59,6 +62,16 @@ status, cost, groups = solve_subgraph_construction(
     memory_expression_builder=build_memory_expression,
 )
 ```
+
+Direct callers explicitly prepare the original graph once before solving or
+searching roots. The Gurobi-independent helper stores node `profile_invocations`
+and edge `calls_per_caller`, preserving `alpha`. Counts are the workflow count
+for the original entry and the sum of incoming weights for other nodes. Ratios
+are unrounded averages over all caller invocations, including shared callers;
+they do not imply peak concurrency or context-specific behavior. Zero calls from
+an invoked caller give zero; an uninvoked caller gives `None`, and positive calls
+from an uninvoked caller are rejected. The testbench Quilt adapter prepares its
+private solver graph automatically, without changing saved scenario JSON.
 
 The callback is called for each candidate root before optimization. It may add
 auxiliary variables/constraints and must return a linear expression in the same
