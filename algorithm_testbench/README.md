@@ -319,3 +319,15 @@ across panels. Results from a different input graph are rejected.
 
 This harness compares graph-level decisions and computational effort. It does not
 estimate actual application latency, throughput, or execution-time concurrency.
+
+Show invocation counts and both normalization ratios on every edge:
+
+```bash
+python -m algorithm_testbench.visualize algorithm_testbench/examples/graphs/counterexample.json --show-call-ratios --output algorithm_testbench/outputs/counterexample_ratios
+```
+
+`--show-call-ratios` overrides `--edge-attribute`; `--hide-labels` still hides edge
+labels. Alpha rounds up calls per workflow invocation; calls/caller averages over
+all source-function invocations, including shared callers. Undefined ratios are
+shown as `undefined`, measured zero as `0`, and fractions with six significant
+digits. Counts and source JSON remain unchanged. No Gurobi installation is needed.

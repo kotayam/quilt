@@ -26,11 +26,14 @@ def prepare_memory_inputs(graph, workflow_invocations):
     validate_count(workflow_invocations, "workflow_invocations")
     if not graph.is_directed() or graph.is_multigraph() or not nx.is_directed_acyclic_graph(graph):
         raise ValueError("graph must be a directed acyclic graph without parallel edges")
+
     roots = [node for node in graph if graph.in_degree(node) == 0]
     if len(roots) != 1:
         raise ValueError("graph must have exactly one original entry root")
+
     for u, v, data in graph.edges(data=True):
         validate_count(data.get("weight"), f"edge {u!r} -> {v!r} weight")
+
     entry = roots[0]
     counts = {
         node: workflow_invocations if node == entry else sum(

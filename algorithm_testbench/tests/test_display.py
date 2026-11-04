@@ -14,6 +14,41 @@ from algorithm_testbench.visualize import _label, _measure_labels, layered_posit
 
 
 class DisplayTests(unittest.TestCase):
+    def test_call_ratio_labels_preserve_scenario(self):
+        from algorithm_testbench.model import Scenario
+        scenario = Scenario.load(Path(__file__).parents[1] / "examples/graphs/counterexample.json")
+        original = scenario.to_dict()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ratios.svg"
+            for orientation in ("vertical", "horizontal"):
+                visualize(scenario, path, show_call_ratios=True, orientation=orientation,
+                          edge_attribute="missing")
+                svg = path.read_text()
+                for expected in ("200 calls/window", "alpha: 20", "calls/caller: 2",
+                                 "alpha: 30", "calls/caller: 3"):
+                    self.assertIn(expected, svg)
+            visualize(scenario, path, show_call_ratios=True, hide_labels=True)
+            self.assertNotIn("alpha: 20", path.read_text())
+        self.assertEqual(scenario.to_dict(), original)
+
+    def test_shared_and_undefined_call_ratio_labels(self):
+        scenario = generate("diamond", seed=42)
+        import networkx as nx
+        scenario.graph = nx.DiGraph()
+        for node in ("a", "b", "c", "d", "z", "e"):
+            scenario.graph.add_node(node, resources={})
+        scenario.metadata.update(entry="a", workflow_invocations=3)
+        for u, v, calls in [("a", "b", 2), ("a", "c", 4), ("b", "d", 1),
+                            ("c", "d", 2), ("d", "e", 1), ("a", "z", 0), ("z", "e", 0)]:
+            scenario.graph.add_edge(u, v, invocations=calls, type="sync")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ratios.svg"
+            visualize(scenario, path, show_call_ratios=True)
+            self.assertIn("calls/caller: undefined", path.read_text())
+            self.assertIn("calls/caller: 0", path.read_text())
+            visualize(scenario, path, show_call_ratios=True, groups={"d": ["d", "e"]})
+            self.assertIn("calls/caller: 0.333333", path.read_text())
+
     def test_byte_units_and_boundaries(self):
         cases = [(0, "0 B"), (0.5, "0.5 B"), (100, "100 B"), (1023, "1023 B"),
                  (1024, "1 KiB"), (1536, "1.5 KiB"), (1024 ** 2, "1 MiB"),

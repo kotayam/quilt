@@ -1,5 +1,7 @@
 """Render saved graphs and optional merge groups to SVG/PNG, without Graphviz."""
 
+from copy import deepcopy
+
 import argparse
 import json
 import math
@@ -84,7 +86,7 @@ def _curve_point(ax, start, end, rad, fraction):
             (1 - t) ** 2 * y0 + 2 * t * (1 - t) * control[1] + t ** 2 * y1)
 
 
-def _draw(ax, graph, root, title, labels, positions, edge_attribute, hide_labels, color):
+def _draw(ax, graph, root, title, labels, positions, edge_attribute, hide_labels, color, show_call_ratios=False):
     boxes = {}
     for node, (x, y) in positions.items():
         is_root = node == root
@@ -138,8 +140,15 @@ def _draw(ax, graph, root, title, labels, positions, edge_attribute, hide_labels
         ax.add_patch(arrow)
         if not hide_labels:
             value = data.get(edge_attribute, data.get("attributes", {}).get(edge_attribute))
+            if show_call_ratios:
+                value = data["invocations"]
             if value is not None:
                 label = textwrap.fill(edge_text(edge_attribute, value), 24)
+                if show_call_ratios:
+                    ratio = data["calls_per_caller"]
+                    ratio_text = "undefined" if ratio is None else format(ratio, ".6g")
+                    label = (f"{data['invocations']} calls/window\n"
+                             f"alpha: {data['alpha']}\ncalls/caller: {ratio_text}")
                 renderer = ax.figure.canvas.get_renderer()
                 font = FontProperties(size=9)
                 label_width = max(renderer.get_text_width_height_descent(line, font, False)[0]
@@ -161,9 +170,17 @@ def _draw(ax, graph, root, title, labels, positions, edge_attribute, hide_labels
 
 def visualize(scenario, output, *, resources=None, node_attributes=None,
               edge_attribute="invocations", hide_labels=False, orientation="vertical", groups=None,
-              memory_unit=None, result_units=None):
+              memory_unit=None, result_units=None, show_call_ratios=False):
     if orientation not in ("vertical", "horizontal"):
         raise ValueError("orientation must be vertical or horizontal")
+    if show_call_ratios:
+        from merge_solver.memory_inputs import prepare_memory_inputs
+
+        scenario = deepcopy(scenario)
+        for u, v, data in scenario.graph.edges(data=True):
+            data["weight"] = data["invocations"]
+            data["alpha"] = scenario.alpha(u, v)
+        prepare_memory_inputs(scenario.graph, scenario.metadata["workflow_invocations"])
     resources = list(DEFAULT_RESOURCES if resources is None else resources)
     node_attributes = list(() if node_attributes is None else node_attributes)
     memory_unit = memory_unit_for(scenario, memory_unit, result_units)
@@ -179,6 +196,8 @@ def visualize(scenario, output, *, resources=None, node_attributes=None,
         if not panels:
             raise ValueError("result contains no groups")
     node_size = _measure_labels(labels.values())
+    if show_call_ratios:
+        node_size = (max(node_size[0], 3.0), max(node_size[1], 1.5))
     layouts = [layered_positions(graph, orientation, node_size) for _, graph, _ in panels]
     bounds = [_panel_bounds(positions, node_size) for positions in layouts]
     panel_width = max(4.5, max(right - left for left, right, _, _ in bounds))
@@ -207,7 +226,7 @@ def visualize(scenario, output, *, resources=None, node_attributes=None,
             ax.set_xlim(center_x - panel_width / 2, center_x + panel_width / 2)
             ax.set_ylim(center_y - panel_height / 2, center_y + panel_height / 2)
             _draw(ax, graph, root, title, labels, layouts[index], edge_attribute,
-                  hide_labels, colors[index % len(colors)])
+                  hide_labels, colors[index % len(colors)], show_call_ratios)
         fig.suptitle(graph_title, fontsize=16, fontweight="bold", y=1 - 0.12 / height)
         legend = [Line2D([0], [0], color="#475569", label="Synchronous call"),
                   Line2D([0], [0], color="#9333ea", linestyle="--", label="Asynchronous call"),
@@ -216,6 +235,8 @@ def visualize(scenario, output, *, resources=None, node_attributes=None,
                    fontsize=9, bbox_to_anchor=(0.5, 0.03 / height))
         edge_description = {"invocations": "calls per profiling window", "request_bytes": "request payload per call",
                             "response_bytes": "response payload per call"}.get(edge_attribute, edge_attribute)
+        if show_call_ratios:
+            edge_description = "total calls/window; alpha = ceil(calls/workflow invocations); calls/caller = calls/caller invocations"
         fig.text(0.5, (footer_height - 0.25) / height, textwrap.fill(
             f"Edge labels: {edge_description}" + (" | Shared functions repeat across group panels" if groups else ""),
             width=max(40, int(width * 12))),
@@ -240,6 +261,8 @@ def main():
     parser.add_argument("--node-attributes", help="comma-separated attribute keys; default: none")
     parser.add_argument("--memory-unit", help="source unit of existing memory values; overrides declared units (default: MiB)")
     parser.add_argument("--edge-attribute", default="invocations")
+    parser.add_argument("--show-call-ratios", action="store_true",
+                        help="show total calls, alpha and calls/caller; overrides --edge-attribute")
     parser.add_argument("--hide-labels", action="store_true", help="show IDs but hide resource and edge labels")
     parser.add_argument("--orientation", choices=["vertical", "horizontal"], default="vertical")
     parser.add_argument("--result", help="results.json from a benchmark run")
@@ -267,7 +290,7 @@ def main():
                           node_attributes=None if args.node_attributes is None else [r for r in args.node_attributes.split(",") if r],
                           edge_attribute=args.edge_attribute, hide_labels=args.hide_labels,
                           orientation=args.orientation, groups=groups, memory_unit=args.memory_unit,
-                          result_units=result_units)
+                          result_units=result_units, show_call_ratios=args.show_call_ratios)
     except (ValueError, KeyError, OSError) as error:
         parser.error(str(error))
     for path in paths:
