@@ -35,12 +35,28 @@ pip3 install networkx gurobipy matplotlib
 
 ## Experimental memory-model hook
 
-`memory_model_template.py` provides two unfinished extension points:
-`estimate_memory(graph, root, members)` for a concrete group's numeric memory
-estimate, and `build_memory_expression(model, graph, root, roots, y, z)` for the
-symbolic ILP formulation. Both raise `NotImplementedError` until you implement
-them. The template documents graph inputs, traversal stages, and concurrency
-assumptions that your implementation must specify.
+`memory_model_template.py` implements numeric `estimate_memory(graph, root, members)`
+and `estimate_memory_by_node(graph, root, members)`. The latter returns each
+member's subtree estimate. Prepare the original graph first:
+
+```python
+from merge_solver.memory_inputs import prepare_memory_inputs
+from merge_solver.memory_model_template import estimate_memory, estimate_memory_by_node
+
+prepare_memory_inputs(graph, workflow_invocations=10)
+by_node = estimate_memory_by_node(graph, root, members)
+root_memory = estimate_memory(graph, root, members)
+```
+
+The recurrence is own memory + sum(calls_per_caller * async child estimate)
++ max(sync child estimates, default 0). Zero and undefined ratios skip the edge.
+Only internal group edges contribute. The parent retains memory; sync branches
+are sequential and async branches overlap each other and the largest sync branch.
+Shared callees contribute along each incoming path. Fractional ratios remain
+unrounded. These are average-based estimates, not guaranteed peak bounds.
+
+The symbolic `build_memory_expression` remains unfinished and raises
+`NotImplementedError`. Numeric estimation does not change solver constraints.
 
 After implementing the symbolic function, call the solver directly from the
 repository root:

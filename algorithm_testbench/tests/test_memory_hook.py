@@ -11,6 +11,7 @@ from algorithm_testbench.model import Scenario
 from merge_solver.memory_model_template import (
     build_memory_expression,
     estimate_memory,
+    estimate_memory_by_node,
 )
 
 try:
@@ -21,11 +22,52 @@ except ImportError:
 
 
 class MemoryTemplateTests(unittest.TestCase):
-    def test_unfinished_functions_fail_explicitly(self):
-        with self.assertRaises(NotImplementedError):
+    def test_invalid_group_and_unfinished_builder_fail_explicitly(self):
+        with self.assertRaises(ValueError):
             estimate_memory(nx.DiGraph(), "a", {"a"})
         with self.assertRaises(NotImplementedError):
             build_memory_expression(None, nx.DiGraph(), "a", {"a"}, {}, {})
+
+
+class NumericMemoryTests(unittest.TestCase):
+    def test_counterexample(self):
+        from copy import deepcopy
+        scenario = Scenario.load(Path(__file__).parents[1] / "examples/graphs/counterexample.json")
+        graph = scenario.graph
+        for n, data in graph.nodes(data=True):
+            data["m"] = data["resources"]["memory"]
+        for u, v, data in graph.edges(data=True):
+            data.update(weight=data["invocations"], alpha=scenario.alpha(u, v))
+        prepare_memory_inputs(graph, 10)
+        original = deepcopy(graph)
+        self.assertEqual(estimate_memory_by_node(graph, "a", graph),
+                         {"a": 760, "b": 75, "c": 40, "d": 5})
+        self.assertEqual(estimate_memory(graph, "b", {"b", "c"}), 60)
+        self.assertTrue(nx.utils.graphs_equal(graph, original))
+
+    def test_shared_fractional_zero_and_sync_max(self):
+        graph = nx.DiGraph()
+        for n, m in [("a", 1), ("b", 2), ("c", 3), ("d", 10)]:
+            graph.add_node(n, m=m)
+        for u, v, kind, ratio in [("a", "b", "sync", 2),
+                                  ("a", "c", "sync", 1),
+                                  ("b", "d", "async", 0.5),
+                                  ("c", "d", "async", 2)]:
+            graph.add_edge(u, v, type=kind, calls_per_caller=ratio)
+        self.assertEqual(estimate_memory(graph, "a", graph), 24)
+        for ratio in (None, 0):
+            graph.edges["c", "d"]["calls_per_caller"] = ratio
+            self.assertEqual(estimate_memory(graph, "a", graph), 8)
+        self.assertEqual(estimate_memory(graph, "d", {"d"}), 10)
+        for value in (-1, float("nan"), True):
+            graph.edges["c", "d"]["calls_per_caller"] = value
+            with self.assertRaises(ValueError):
+                estimate_memory(graph, "a", graph)
+        del graph.edges["c", "d"]["calls_per_caller"]
+        with self.assertRaisesRegex(ValueError, "prepare_memory_inputs"):
+            estimate_memory(graph, "a", graph)
+        with self.assertRaises(ValueError):
+            estimate_memory(graph, "a", {"a", "d"})
 
 
 class MemoryInputsTests(unittest.TestCase):
