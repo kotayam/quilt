@@ -24,6 +24,7 @@ EPSILON = 1e-9
 # This avoids the overhead of pickling and sending these large, read-only data
 # structures to each worker for every task.
 worker_graph = None
+worker_memory_builder = None
 worker_M = 0
 worker_C = 0
 worker_all_nodes = []
@@ -40,7 +41,7 @@ def _default_candidate_selector(graph, root_node, **kwargs):
     scores = [(n, 1.0) for n in candidates]
     return candidates, scores
 
-def init_worker(graph, M, C, all_nodes, predecessors, full_reachable_from, ilp_time_limit, ilp_mip_gap, ilp_mip_focus):
+def init_worker(graph, M, C, all_nodes, predecessors, full_reachable_from, ilp_time_limit, ilp_mip_gap, ilp_mip_focus, memory_expression_builder=None):
     """
     Initializer function for each worker process in the ProcessPoolExecutor.
     It sets the global variables for the worker's lifetime.
@@ -49,6 +50,8 @@ def init_worker(graph, M, C, all_nodes, predecessors, full_reachable_from, ilp_t
     global worker_predecessors, worker_full_reachable_from
     global worker_ilp_time_limit, worker_ilp_mip_gap, worker_ilp_mip_focus
 
+    global worker_memory_builder
+    worker_memory_builder = memory_expression_builder
     worker_graph = graph
     worker_M = M
     worker_C = C
@@ -78,6 +81,7 @@ def evaluate_r_tuple_worker(R_tuple):
         time_limit=worker_ilp_time_limit,
         mip_gap=worker_ilp_mip_gap,
         mip_focus=worker_ilp_mip_focus,
+        memory_expression_builder=worker_memory_builder,
         num_threads=1  # Each parallel worker uses a single thread.
     )
     return R_tuple, status, cost, assignment
@@ -92,7 +96,8 @@ def run_root_selection_strategy(strategy_name, graph, M, C, root_node, all_nodes
                                 # General params
                                 strategy_mode='combinatorial',
                                 num_threads=1,
-                                ilp_time_limit=None, ilp_mip_gap=0.0, ilp_mip_focus=0):
+                                ilp_time_limit=None, ilp_mip_gap=0.0, ilp_mip_focus=0,
+                                memory_expression_builder=None):
     """
     The main orchestrator for the root selection and subgraph construction process.
     It manages two primary modes: 'combinatorial' for exhaustive search over small
@@ -114,7 +119,7 @@ def run_root_selection_strategy(strategy_name, graph, M, C, root_node, all_nodes
         with ProcessPoolExecutor(max_workers=num_threads,
                                  initializer=init_worker,
                                  initargs=(graph, M, C, all_nodes, predecessors, full_reachable_from,
-                                           ilp_time_limit, ilp_mip_gap, ilp_mip_focus)) as executor:
+                                           ilp_time_limit, ilp_mip_gap, ilp_mip_focus, memory_expression_builder)) as executor:
 
             # Get the pool of candidate roots to choose from.
             candidate_pool, _ = candidate_selector_fn(graph, root_node, **selector_args)
@@ -179,7 +184,7 @@ def run_root_selection_strategy(strategy_name, graph, M, C, root_node, all_nodes
                 graph=graph, R_set=R_initial, M=M, C=C, all_nodes=all_nodes,
                 predecessors=predecessors, full_reachable_from=full_reachable_from,
                 time_limit=ilp_time_limit, mip_gap=ilp_mip_gap, mip_focus=ilp_mip_focus,
-                num_threads=num_threads
+                num_threads=num_threads, memory_expression_builder=memory_expression_builder
             )
 
             if status not in (gp.GRB.INFEASIBLE, gp.GRB.INF_OR_UNBD) and cost is not None:
@@ -221,7 +226,7 @@ def run_root_selection_strategy(strategy_name, graph, M, C, root_node, all_nodes
                     graph=graph, R_set=R_temp, M=M, C=C, all_nodes=all_nodes,
                     predecessors=predecessors, full_reachable_from=full_reachable_from,
                     time_limit=ilp_time_limit, mip_gap=ilp_mip_gap, mip_focus=ilp_mip_focus,
-                    num_threads=num_threads
+                    num_threads=num_threads, memory_expression_builder=memory_expression_builder
                 )
 
                 # Accept new solution if cost is better, OR if cost is the same

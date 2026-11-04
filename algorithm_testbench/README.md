@@ -331,3 +331,9 @@ labels. Alpha rounds up calls per workflow invocation; calls/caller averages ove
 all source-function invocations, including shared callers. Undefined ratios are
 shown as `undefined`, measured zero as `0`, and fractions with six significant
 digits. Counts and source JSON remain unchanged. No Gurobi installation is needed.
+
+Select `"resource_model": "recursive"` to enforce bottom-up memory in Quilt
+exact and heuristic adapters and evaluate assignments with the numeric estimator.
+CPU and remote-call cost retain Quilt accounting. The default remains `quilt`.
+See `examples/experiments/counterexample_recursive.json`. Average multiplicities
+are estimates, not guaranteed peak-memory bounds.

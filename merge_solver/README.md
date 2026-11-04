@@ -55,10 +55,11 @@ are sequential and async branches overlap each other and the largest sync branch
 Shared callees contribute along each incoming path. Fractional ratios remain
 unrounded. These are average-based estimates, not guaranteed peak bounds.
 
-The symbolic `build_memory_expression` remains unfinished and raises
-`NotImplementedError`. Numeric estimation does not change solver constraints.
+The symbolic `build_memory_expression` implements the same recurrence using
+indicator and maximum constraints. Pass it explicitly to select recursive memory.
+Numeric estimation alone does not change solver constraints.
 
-After implementing the symbolic function, call the solver directly from the
+To use the symbolic function, call the solver directly from the
 repository root:
 
 ```python

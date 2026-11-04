@@ -39,7 +39,7 @@ def greedy(scenario, limits, config):
 
 def quilt(scenario, limits, config, strategy):
     """Adapt the original solver in the isolated worker; never edit source files."""
-    if config["resource_model"] != "quilt":
+    if config["resource_model"] not in ("quilt", "recursive"):
         raise ValueError("Quilt adapters support only the quilt resource model")
     original_dir = Path(__file__).resolve().parents[1] / "merge_solver"
     # The adapter runs in its own worker. Preserve even the original directory's
@@ -65,10 +65,15 @@ def quilt(scenario, limits, config, strategy):
 
     prepare_memory_inputs(graph, scenario.metadata["workflow_invocations"])
 
+    from merge_solver.memory_model_template import build_memory_expression
+    builder = build_memory_expression if config["resource_model"] == "recursive" else None
+
     statuses = []
     original_solve = root_selector.solve_subgraph_construction
 
     def observed_solve(*args, **kwargs):
+        if builder is not None:
+            kwargs["memory_expression_builder"] = builder
         try:
             result = original_solve(*args, **kwargs)
         except (AttributeError, gp.GurobiError) as error:

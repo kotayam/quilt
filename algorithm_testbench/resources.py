@@ -31,7 +31,26 @@ class QuiltResources:
         return usage
 
 
-RESOURCE_MODELS = {"quilt": QuiltResources}
+class RecursiveResources(QuiltResources):
+    """Bottom-up memory with caller-relative average multiplicities."""
+    name = "recursive"
+
+    def usage(self, scenario, root, members):
+        from copy import deepcopy
+        from merge_solver.memory_inputs import prepare_memory_inputs
+        from merge_solver.memory_model_template import estimate_memory
+        graph = deepcopy(scenario.graph)
+        for _, data in graph.nodes(data=True):
+            data["m"] = data["resources"]["memory"]
+        for _, _, data in graph.edges(data=True):
+            data["weight"] = data["invocations"]
+        prepare_memory_inputs(graph, scenario.metadata["workflow_invocations"])
+        usage = super().usage(scenario, root, members)
+        usage["memory"] = estimate_memory(graph, root, members)
+        return usage
+
+
+RESOURCE_MODELS = {"quilt": QuiltResources, "recursive": RecursiveResources}
 
 
 def get_model(name):

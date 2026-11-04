@@ -1,4 +1,4 @@
-"""Numeric experimental memory model and an unfinished symbolic extension."""
+"""Numeric experimental memory model and its symbolic solver formulation."""
 
 import math
 
@@ -91,7 +91,7 @@ def build_memory_expression(model, graph, root, roots, y, z):
     values yet: do not read .X or branch on symbolic membership. In particular,
     estimate_memory cannot be called on an assumed final group to encode the ILP.
 
-    Implementation outline:
+    Formulation stages:
       1. Precompute any membership-independent traversal data for this root.
       2. Express membership-dependent concurrency and bottom-up aggregation using
          y/z and auxiliary linear constraints as needed. Avoid variable products
@@ -101,4 +101,33 @@ def build_memory_expression(model, graph, root, roots, y, z):
 
     Leave the original graph alpha unchanged so CPU accounting is unaffected.
     """
-    raise NotImplementedError("Implement the symbolic memory formulation before enabling it")
+    import gurobipy as gp
+
+    # Validate prepared data using the numeric implementation.
+    estimate_memory_by_node(graph, root, {root} | nx.descendants(graph, root))
+    nodes = list(graph)
+    prefix = f"recursive_{list(roots).index(root)}"
+    memory = model.addVars(nodes, lb=0, name=f"{prefix}_memory")
+    for index, node in enumerate(nodes):
+        asynchronous, synchronous = [], []
+        for edge_index, child in enumerate(graph.successors(node)):
+            edge = graph.edges[node, child]
+            ratio = edge["calls_per_caller"]
+            if ratio is None or ratio == 0:
+                continue
+            contribution = model.addVar(lb=0, name=f"{prefix}_edge_{index}_{edge_index}")
+            model.addGenConstrIndicator(z[node, child, root], False, contribution == 0)
+            model.addGenConstrIndicator(z[node, child, root], True,
+                                        contribution == memory[child])
+            if edge["type"] == "async":
+                asynchronous.append(ratio * contribution)
+            else:
+                synchronous.append(contribution)
+        peak = model.addVar(lb=0, name=f"{prefix}_sync_{index}")
+        if synchronous:
+            model.addGenConstrMax(peak, synchronous, constant=0)
+        else:
+            model.addConstr(peak == 0)
+        model.addConstr(memory[node] == graph.nodes[node]["m"] * y[node, root]
+                        + gp.quicksum(asynchronous) + peak)
+    return memory[root]

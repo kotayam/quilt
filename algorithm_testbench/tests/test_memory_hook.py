@@ -25,8 +25,7 @@ class MemoryTemplateTests(unittest.TestCase):
     def test_invalid_group_and_unfinished_builder_fail_explicitly(self):
         with self.assertRaises(ValueError):
             estimate_memory(nx.DiGraph(), "a", {"a"})
-        with self.assertRaises(NotImplementedError):
-            build_memory_expression(None, nx.DiGraph(), "a", {"a"}, {}, {})
+
 
 
 class NumericMemoryTests(unittest.TestCase):
@@ -207,6 +206,22 @@ class MemoryHookTests(unittest.TestCase):
         self.assertEqual(self.solve(25, memory_expression_builder=builder)[0], gp.GRB.INFEASIBLE)
         self.assertEqual(self.solve(40, cpu=5, memory_expression_builder=builder)[0], gp.GRB.INFEASIBLE)
 
-    def test_selecting_unfinished_builder_fails(self):
-        with self.assertRaisesRegex(NotImplementedError, "symbolic"):
-            self.solve(40, memory_expression_builder=build_memory_expression)
+    def test_recursive_fixture_capacity_boundaries(self):
+        for name, expected in (("counterexample", 760), ("diamond", 80),
+                               ("inherited_concurrency", 90), ("diamond_extended", 176)):
+            scenario = Scenario.load(Path(__file__).parents[1] / f"examples/graphs/{name}.json")
+            self.graph = scenario.graph.copy()
+            for _, data in self.graph.nodes(data=True):
+                data.update(m=data["resources"]["memory"], c=data["resources"]["cpu"])
+            for u, v, data in self.graph.edges(data=True):
+                data.update(weight=data["invocations"], alpha=scenario.alpha(u, v))
+            prepare_memory_inputs(self.graph, scenario.metadata["workflow_invocations"])
+            self.assertEqual(estimate_memory(self.graph, scenario.entry, self.graph), expected)
+            for limit, status in ((expected, gp.GRB.OPTIMAL), (expected - 1, gp.GRB.INFEASIBLE)):
+                self.assertEqual(self.solve(limit, roots={scenario.entry}, cpu=1000,
+                    memory_expression_builder=build_memory_expression)[0], status)
+
+    def test_recursive_builder_matches_numeric(self):
+        prepare_memory_inputs(self.graph, 10)
+        self.assertEqual(self.solve(210, memory_expression_builder=build_memory_expression)[0], gp.GRB.OPTIMAL)
+        self.assertEqual(self.solve(209, memory_expression_builder=build_memory_expression)[0], gp.GRB.INFEASIBLE)
