@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "graph": "../graphs/counterexample.json",
+  "resource_model": "quilt",
+  "units": {"cpu": "profile units", "memory": "MiB"},
+  "limits": {"cpu": 100, "memory": 150},
+  "seeds": [0],
+  "timeout_seconds": 60,
+  "algorithms": [
+    {"name": "no_merge"},
+    {"name": "quilt_exact"}
+  ]
+}

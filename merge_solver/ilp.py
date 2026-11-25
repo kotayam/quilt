@@ -7,7 +7,8 @@ import math
 EPSILON = 1e-9
 
 def solve_subgraph_construction(graph, R_set, M, C, all_nodes, predecessors, full_reachable_from,
-                                time_limit=None, mip_gap=0.0, mip_focus=0, num_threads=1):
+                                time_limit=None, mip_gap=0.0, mip_focus=0, num_threads=1,
+                                memory_expression_builder=None):
     """
     Solves the subgraph construction problem for a given set of candidate roots (R_set)
     using an Integer Linear Program (ILP).
@@ -29,6 +30,11 @@ def solve_subgraph_construction(graph, R_set, M, C, all_nodes, predecessors, ful
         mip_gap (float, optional): Gurobi MIP gap.
         mip_focus (int, optional): Gurobi MIP focus parameter.
         num_threads (int, optional): Number of threads for Gurobi to use.
+        memory_expression_builder (callable, optional): Called once per candidate
+            root with keyword arguments model, graph, root, roots, y, and z.
+            Returns a Gurobi linear memory expression, in the same units as M.
+            May add auxiliary variables and constraints. If omitted, uses the
+            original Quilt formula. See memory_model_template.py.
 
     Returns:
         A tuple containing the Gurobi status, objective value (cost), and the final
@@ -95,14 +101,18 @@ def solve_subgraph_construction(graph, R_set, M, C, all_nodes, predecessors, ful
 
             for r in R_set:
                 # Constraint 6: Memory capacity
-                m_r = graph.nodes[r]['m']
-                mem_cost = m_r + gp.quicksum(
-                    graph.nodes[j]['m'] * z[i, j, r]
-                    for i, j in graph.edges()
-                ) + gp.quicksum(
-                    (graph.edges[i, j]['alpha'] - 1) * graph.nodes[j]['m'] * z[i, j, r]
-                    for i, j in async_edges
-                )
+                if memory_expression_builder is None:
+                    m_r = graph.nodes[r]['m']
+                    mem_cost = m_r + gp.quicksum(
+                        graph.nodes[j]['m'] * z[i, j, r]
+                        for i, j in graph.edges()
+                    ) + gp.quicksum(
+                        (graph.edges[i, j]['alpha'] - 1) * graph.nodes[j]['m'] * z[i, j, r]
+                        for i, j in async_edges
+                    )
+                else:
+                    mem_cost = memory_expression_builder(
+                        model=model, graph=graph, root=r, roots=R_set, y=y, z=z)
                 model.addConstr(mem_cost <= M, name=f"mem_cap_{r}")
 
                 # Constraint 7: CPU capacity

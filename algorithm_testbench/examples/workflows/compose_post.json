@@ -1,0 +1,389 @@
+{
+  "schema_version": 1,
+  "name": "Database-backed compose-post — Illustrative resource estimates, not measured production data",
+  "entry": "compose-post",
+  "workflow_invocations": 100,
+  "units": {
+    "cpu": "illustrative active core equivalents",
+    "memory": "MiB"
+  },
+  "provenance": {
+    "catalog_id": "compose_post",
+    "resource_status": "illustrative_estimates",
+    "structure_status": "repository_call_graph",
+    "sources": [
+      {
+        "label": "Repository compose-post call graph",
+        "path": "benchmark/DeathStarBench/social_network/merge/funcTrees/funcTree.compose_post"
+      },
+      {
+        "label": "Repository compose-post function",
+        "path": "benchmark/DeathStarBench/social_network/functions/compose-post/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository text-service function",
+        "path": "benchmark/DeathStarBench/social_network/functions/text-service/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository media-service function",
+        "path": "benchmark/DeathStarBench/social_network/functions/media-service/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository compose-creator-with-userid function",
+        "path": "benchmark/DeathStarBench/social_network/functions/compose-creator-with-userid/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository url-shorten-service function",
+        "path": "benchmark/DeathStarBench/social_network/functions/url-shorten-service/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository user-mention-service function",
+        "path": "benchmark/DeathStarBench/social_network/functions/user-mention-service/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository store-post function",
+        "path": "benchmark/DeathStarBench/social_network/functions/store-post/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository write-user-timeline function",
+        "path": "benchmark/DeathStarBench/social_network/functions/write-user-timeline/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository write-home-timeline function",
+        "path": "benchmark/DeathStarBench/social_network/functions/write-home-timeline/template/rust/function/src/main.rs"
+      },
+      {
+        "label": "Repository social-graph-get-followers function",
+        "path": "benchmark/DeathStarBench/social_network/functions/social-graph-get-followers/template/rust/function/src/main.rs"
+      }
+    ]
+  },
+  "description": "The existing synchronous Quilt social-network call graph with illustrative payload and backend-traffic budgets.",
+  "assumptions": [
+    "Every edge is invoked once per successful workflow execution; N=100 is a synthetic profiling window.",
+    "CPU values are illustrative average active core equivalents; memory is illustrative peak host MiB per invocation, including runtime overhead. Neither was measured.",
+    "Local storage and external network values are bytes per function invocation. Edge request/response values are body-size budgets per call; they are excluded from node external-network totals.",
+    "External object stores, caches, and databases are not mergeable function nodes. Merging does not automatically remove their traffic.",
+    "Connection setup, retries, transport overhead, client-to-entry traffic, and execution timing are not modeled. No bandwidth rate or latency prediction is implied.",
+    "Zero means no modeled demand for this selected workload, not an observed production measurement.",
+    "Successful post: one URL, two mentioned users, two media identifiers, and twenty followers. Mentioned users are disjoint from followers, yielding twenty-two home-timeline updates.",
+    "Both lookup caches miss for this request: user mentions and follower lookup query memcached then Redis. Runtimes are warm; this is a chosen request profile, not a measured cache-hit distribution.",
+    "The supplied synchronous Rust implementation makes blocking calls in program order. Graph siblings are not necessarily parallel; edges represent actual calls, not a stage-by-stage dataflow diagram.",
+    "media-service validates and repackages identifiers/types; compose-creator-with-userid formats an existing ID and username. Neither fetches media objects or queries a database.",
+    "The checked-in storage implementation uses Redis, not the MongoDB deployment of upstream DeathStarBench.",
+    "Remote network budgets are illustrative protocol/body allowances. Eight post-field HSETs are budgeted at 2304 bytes sent and 64 bytes received; URL shortening uses two HSETs at 128/8 bytes each.",
+    "Each timeline ZADD is budgeted at 96 sent bytes and 8 reply bytes. Lookup budgets include cache-miss and Redis traffic; source code has no additional function calls for these backend operations.",
+    "Post and text call payload budgets are 2048 bytes. The graph does not include retries, failures, or input validation exits."
+  ],
+  "workload": {
+    "url_count": 1,
+    "mention_count": 2,
+    "media_id_count": 2,
+    "follower_count": 20,
+    "mentions_overlap_followers": false,
+    "home_timeline_updates": 22,
+    "redis_update_request_bytes": 96,
+    "redis_update_response_bytes": 8,
+    "post_record_budget_bytes": 2048,
+    "cache_state": "miss_for_both_lookups"
+  },
+  "merging_questions": [
+    "Which small wrapper functions should merge when network calls into remote stores remain?",
+    "How does follower count alter home-timeline traffic without altering the number of function-call edges?",
+    "Would a cache-hit workload lead to a different merging decision than this cache-miss workload?"
+  ],
+  "nodes": [
+    {
+      "id": "compose-post",
+      "resources": {
+        "cpu": 0.08,
+        "memory": 64,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Assemble post and invoke synchronous helpers",
+        "requires_gpu": false,
+        "external_services": []
+      }
+    },
+    {
+      "id": "unique-id-service",
+      "resources": {
+        "cpu": 0.01,
+        "memory": 16,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Generate an identifier without external storage",
+        "requires_gpu": false,
+        "external_services": []
+      }
+    },
+    {
+      "id": "media-service",
+      "resources": {
+        "cpu": 0.02,
+        "memory": 24,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Validate/repackage two media identifiers; no media download",
+        "requires_gpu": false,
+        "external_services": []
+      }
+    },
+    {
+      "id": "text-service",
+      "resources": {
+        "cpu": 0.15,
+        "memory": 48,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Parse text and invoke mention/URL helpers",
+        "requires_gpu": false,
+        "external_services": []
+      }
+    },
+    {
+      "id": "write-home-timeline",
+      "resources": {
+        "cpu": 0.05,
+        "memory": 48,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 176,
+        "network_external_tx_bytes_per_invocation": 2112
+      },
+      "attributes": {
+        "role": "Fetch followers, union mentions, update 22 remote timelines",
+        "requires_gpu": false,
+        "external_services": [
+          "redis"
+        ]
+      }
+    },
+    {
+      "id": "write-user-timeline",
+      "resources": {
+        "cpu": 0.02,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 8,
+        "network_external_tx_bytes_per_invocation": 96
+      },
+      "attributes": {
+        "role": "Update one remote timeline",
+        "requires_gpu": false,
+        "external_services": [
+          "redis"
+        ]
+      }
+    },
+    {
+      "id": "compose-creator-with-userid",
+      "resources": {
+        "cpu": 0.01,
+        "memory": 16,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 0,
+        "network_external_tx_bytes_per_invocation": 0
+      },
+      "attributes": {
+        "role": "Format existing user ID/name without a database call",
+        "requires_gpu": false,
+        "external_services": []
+      }
+    },
+    {
+      "id": "store-post",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 64,
+        "network_external_tx_bytes_per_invocation": 2304
+      },
+      "attributes": {
+        "role": "Write eight post fields into remote Redis",
+        "requires_gpu": false,
+        "external_services": [
+          "redis"
+        ]
+      }
+    },
+    {
+      "id": "url-shorten-service",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 16,
+        "network_external_tx_bytes_per_invocation": 256
+      },
+      "attributes": {
+        "role": "Generate shortened URL and write two remote fields",
+        "requires_gpu": false,
+        "external_services": [
+          "redis"
+        ]
+      }
+    },
+    {
+      "id": "user-mention-service",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 384,
+        "network_external_tx_bytes_per_invocation": 512
+      },
+      "attributes": {
+        "role": "Resolve two users through cache misses and Redis",
+        "requires_gpu": false,
+        "external_services": [
+          "memcached",
+          "redis"
+        ]
+      }
+    },
+    {
+      "id": "social-graph-get-followers",
+      "resources": {
+        "cpu": 0.03,
+        "memory": 32,
+        "storage_read_bytes_per_invocation": 0,
+        "storage_write_bytes_per_invocation": 0,
+        "network_external_rx_bytes_per_invocation": 1296,
+        "network_external_tx_bytes_per_invocation": 128
+      },
+      "attributes": {
+        "role": "Resolve 20 follower IDs through a cache miss and Redis",
+        "requires_gpu": false,
+        "external_services": [
+          "memcached",
+          "redis"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "compose-post",
+      "target": "unique-id-service",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 16,
+        "response_bytes": 24
+      }
+    },
+    {
+      "source": "compose-post",
+      "target": "media-service",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 128,
+        "response_bytes": 256
+      }
+    },
+    {
+      "source": "compose-post",
+      "target": "text-service",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 2048,
+        "response_bytes": 2048
+      }
+    },
+    {
+      "source": "compose-post",
+      "target": "write-home-timeline",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 128,
+        "response_bytes": 256
+      }
+    },
+    {
+      "source": "compose-post",
+      "target": "write-user-timeline",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 16
+      }
+    },
+    {
+      "source": "compose-post",
+      "target": "compose-creator-with-userid",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 96
+      }
+    },
+    {
+      "source": "compose-post",
+      "target": "store-post",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 2048,
+        "response_bytes": 16
+      }
+    },
+    {
+      "source": "text-service",
+      "target": "url-shorten-service",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 128,
+        "response_bytes": 256
+      }
+    },
+    {
+      "source": "text-service",
+      "target": "user-mention-service",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 64,
+        "response_bytes": 128
+      }
+    },
+    {
+      "source": "write-home-timeline",
+      "target": "social-graph-get-followers",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 32,
+        "response_bytes": 256
+      }
+    }
+  ]
+}

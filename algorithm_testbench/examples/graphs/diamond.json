@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "Diamond with a shared callee",
+  "entry": "A",
+  "workflow_invocations": 100,
+  "nodes": [
+    {"id": "A", "resources": {"cpu": 1, "memory": 16}, "attributes": {}},
+    {"id": "B", "resources": {"cpu": 1, "memory": 16}, "attributes": {}},
+    {"id": "C", "resources": {"cpu": 1, "memory": 16}, "attributes": {}},
+    {"id": "D", "resources": {"cpu": 1, "memory": 16}, "attributes": {"role": "shared callee"}}
+  ],
+  "edges": [
+    {"source": "A", "target": "B", "invocations": 100, "type": "async", "attributes": {"request_bytes": 1024}},
+    {"source": "A", "target": "C", "invocations": 100, "type": "async", "attributes": {"request_bytes": 2048}},
+    {"source": "B", "target": "D", "invocations": 100, "type": "sync", "attributes": {"request_bytes": 512}},
+    {"source": "C", "target": "D", "invocations": 100, "type": "sync", "attributes": {"request_bytes": 512}}
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "Inherited concurrency: Quilt accounts for 60 MiB; overlap can reach 90 MiB",
+  "entry": "A",
+  "workflow_invocations": 100,
+  "attributes": {
+    "limitation": "A launches four B instances asynchronously; each B calls C synchronously. Quilt does not propagate multiplicity into C's memory term."
+  },
+  "nodes": [
+    {"id": "A", "resources": {"cpu": 1, "memory": 10}, "attributes": {}},
+    {"id": "B", "resources": {"cpu": 1, "memory": 10}, "attributes": {}},
+    {"id": "C", "resources": {"cpu": 1, "memory": 10}, "attributes": {}}
+  ],
+  "edges": [
+    {"source": "A", "target": "B", "invocations": 400, "type": "async", "attributes": {}},
+    {"source": "B", "target": "C", "invocations": 400, "type": "sync", "attributes": {}}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "graph": "../graphs/diamond.json",
+  "resource_model": "quilt",
+  "units": {"cpu": "profile units", "memory": "MiB"},
+  "limits": {"cpu": 4, "memory": 64},
+  "seeds": [0, 42],
+  "timeout_seconds": 30,
+  "algorithms": [
+    {"name": "no_merge"},
+    {"name": "greedy"}
+  ]
+}

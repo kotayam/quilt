@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "graph": "../graphs/diamond.json",
+  "resource_model": "quilt",
+  "units": {"cpu": "profile units", "memory": "MiB"},
+  "limits": {"cpu": 4, "memory": 64},
+  "seeds": [0],
+  "timeout_seconds": 60,
+  "algorithms": [
+    {"name": "no_merge"},
+    {"name": "greedy"},
+    {"name": "quilt_exact", "parameters": {"solve_time_limit_seconds": 5}},
+    {"name": "quilt_downstream"},
+    {"name": "quilt_weighted_degree"}
+  ]
+}

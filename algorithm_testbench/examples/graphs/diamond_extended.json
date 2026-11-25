@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "name": "diamond-4-seed-42",
+  "entry": "f0",
+  "workflow_invocations": 100,
+  "generator": {
+    "shape": "diamond",
+    "seed": 42,
+    "nodes": 4,
+    "extra_edge_probability": 0.15,
+    "async_probability": 0.2,
+    "resource_profile": "extended"
+  },
+  "nodes": [
+    {
+      "id": "f0",
+      "resources": {
+        "cpu": 1,
+        "memory": 16,
+        "storage_read_ops_per_invocation": 66,
+        "storage_write_ops_per_invocation": 44,
+        "storage_read_bytes_per_invocation": 270336,
+        "storage_write_bytes_per_invocation": 180224,
+        "network_external_rx_bytes_per_invocation": 502258,
+        "network_external_tx_bytes_per_invocation": 861503
+      },
+      "attributes": {
+        "requires_gpu": false
+      }
+    },
+    {
+      "id": "f1",
+      "resources": {
+        "cpu": 3,
+        "memory": 16,
+        "storage_read_ops_per_invocation": 22,
+        "storage_write_ops_per_invocation": 39,
+        "storage_read_bytes_per_invocation": 90112,
+        "storage_write_bytes_per_invocation": 159744,
+        "network_external_rx_bytes_per_invocation": 485115,
+        "network_external_tx_bytes_per_invocation": 249883,
+        "gpu_peak_memory_bytes": 268435456
+      },
+      "attributes": {
+        "requires_gpu": true
+      }
+    },
+    {
+      "id": "f2",
+      "resources": {
+        "cpu": 2,
+        "memory": 16,
+        "storage_read_ops_per_invocation": 32,
+        "storage_write_ops_per_invocation": 106,
+        "storage_read_bytes_per_invocation": 131072,
+        "storage_write_bytes_per_invocation": 434176,
+        "network_external_rx_bytes_per_invocation": 1044898,
+        "network_external_tx_bytes_per_invocation": 628303
+      },
+      "attributes": {
+        "requires_gpu": false
+      }
+    },
+    {
+      "id": "f3",
+      "resources": {
+        "cpu": 1,
+        "memory": 64,
+        "storage_read_ops_per_invocation": 59,
+        "storage_write_ops_per_invocation": 128,
+        "storage_read_bytes_per_invocation": 241664,
+        "storage_write_bytes_per_invocation": 524288,
+        "network_external_rx_bytes_per_invocation": 258565,
+        "network_external_tx_bytes_per_invocation": 520106,
+        "gpu_peak_memory_bytes": 1073741824
+      },
+      "attributes": {
+        "requires_gpu": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "f0",
+      "target": "f1",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 100360,
+        "response_bytes": 946563
+      }
+    },
+    {
+      "source": "f0",
+      "target": "f2",
+      "invocations": 100,
+      "type": "async",
+      "attributes": {
+        "request_bytes": 843591,
+        "response_bytes": 1000561
+      }
+    },
+    {
+      "source": "f1",
+      "target": "f3",
+      "invocations": 200,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 914127,
+        "response_bytes": 347997
+      }
+    },
+    {
+      "source": "f2",
+      "target": "f3",
+      "invocations": 100,
+      "type": "sync",
+      "attributes": {
+        "request_bytes": 253677,
+        "response_bytes": 393602
+      }
+    }
+  ]
+}

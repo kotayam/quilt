@@ -33,6 +33,77 @@ pip3 install networkx gurobipy matplotlib
 
 # Quilt's decision algorithm
 
+## Experimental memory-model hook
+
+`memory_model_template.py` implements numeric `estimate_memory(graph, root, members)`
+and `estimate_memory_by_node(graph, root, members)`. The latter returns each
+member's subtree estimate. Prepare the original graph first:
+
+```python
+from merge_solver.memory_inputs import prepare_memory_inputs
+from merge_solver.memory_model_template import estimate_memory, estimate_memory_by_node
+
+prepare_memory_inputs(graph, workflow_invocations=10)
+by_node = estimate_memory_by_node(graph, root, members)
+root_memory = estimate_memory(graph, root, members)
+```
+
+The recurrence is own memory + sum(calls_per_caller * async child estimate)
++ max(sync child estimates, default 0). Zero and undefined ratios skip the edge.
+Only internal group edges contribute. The parent retains memory; sync branches
+are sequential and async branches overlap each other and the largest sync branch.
+Shared callees contribute along each incoming path. Fractional ratios remain
+unrounded. These are average-based estimates, not guaranteed peak bounds.
+
+The symbolic `build_memory_expression` implements the same recurrence using
+indicator and maximum constraints. Pass it explicitly to select recursive memory.
+Numeric estimation alone does not change solver constraints.
+
+To use the symbolic function, call the solver directly from the
+repository root:
+
+```python
+from merge_solver.ilp import solve_subgraph_construction
+from merge_solver.memory_model_template import build_memory_expression
+from merge_solver.memory_inputs import prepare_memory_inputs
+from merge_solver.rdag import preprocess_graph
+
+# graph must use the solver's node m/c and edge weight/alpha/type fields.
+prepare_memory_inputs(graph, workflow_invocations=10)
+# Custom estimators can read graph.edges[u, v]["calls_per_caller"].
+root, nodes, predecessors, reachable = preprocess_graph(graph)
+status, cost, groups = solve_subgraph_construction(
+    graph=graph, R_set={root}, M=150, C=100,
+    all_nodes=nodes, predecessors=predecessors,
+    full_reachable_from=reachable,
+    memory_expression_builder=build_memory_expression,
+)
+```
+
+Direct callers explicitly prepare the original graph once before solving or
+searching roots. The Gurobi-independent helper stores node `profile_invocations`
+and edge `calls_per_caller`, preserving `alpha`. Counts are the workflow count
+for the original entry and the sum of incoming weights for other nodes. Ratios
+are unrounded averages over all caller invocations, including shared callers;
+they do not imply peak concurrency or context-specific behavior. Zero calls from
+an invoked caller give zero; an uninvoked caller gives `None`, and positive calls
+from an uninvoked caller are rejected. The testbench Quilt adapter prepares its
+private solver graph automatically, without changing saved scenario JSON.
+
+The callback is called for each candidate root before optimization. It may add
+auxiliary variables/constraints and must return a linear expression in the same
+memory units as `M`; the solver adds the capacity constraint. Membership is still
+symbolic, so a traversal of an assumed final group cannot substitute for this
+formulation. Keep common traversal logic in pure helpers, and compare the
+symbolic formulation with your concrete estimator using fixed memberships.
+
+Omitting the callback preserves Quilt's original formula. CPU accounting, root
+selection, and their existing callers are unchanged. This hook is currently for
+direct ILP calls: experiment configuration and root-search callback propagation
+are not wired up. `print_solution_details()` and the testbench evaluator still
+report the original Quilt memory formula; they must be adapted before validating
+or reporting results from your custom model.
+
 ## Content
 The code is split into 10 files.
 
