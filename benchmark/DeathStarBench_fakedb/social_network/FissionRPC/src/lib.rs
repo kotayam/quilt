@@ -1,5 +1,8 @@
-use curl::easy::{Easy};
-use std::{io::{self, Read, Write, BufReader}, error::Error, fs::{File, read_to_string}, path::Path, collections::HashMap};
+#[cfg(feature = "rpc")]
+use curl::easy::Easy;
+#[cfg(feature = "rpc")]
+use std::io::Read;
+use std::{io::{self, Write, BufReader}, error::Error, fs::{File, read_to_string}, path::Path, collections::HashMap};
 use serde::{Deserialize, Serialize};
 use std::env;
 
@@ -280,6 +283,11 @@ pub fn get_env(env_var: String) -> String {
   env_value
 }
 
+// Some leaf functions import this name without making RPC calls.
+#[cfg(not(feature = "rpc"))]
+pub mod make_rpc {}
+
+#[cfg(feature = "rpc")]
 pub fn make_rpc(func_name: &str, input: String) -> String {
   let mut easy = Easy::new();
   let mut url = String::new();
